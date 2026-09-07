@@ -159,7 +159,7 @@
 - **修复**：trigger.ts 新增共享 `buildTopicShiftSpace(state)`（登记全部 user 消息入语料），
   编排器内置路径与 defaultShouldCompress 共用，消除两处接线漂移的土壤。
 - **回归**：default-facade.feature 场景 1/2 走内置路径（同 helper）；
-  defaultShouldCompress 的直接单测建议后续补入 trigger-watermark。
+  defaultShouldCompress 的直接单测已于后续补入 trigger-watermark.feature（2 场景，见下方闭环记录）。
 
 ### [x] R5-2 / P3 callbacks.ts 头注释漂移（已修）
 - 「其余五个由默认实现承担」「全部可选」与 shouldCompress 移出 DEFAULT_CALLBACKS、
@@ -224,4 +224,4 @@
   P0-3 场景扩展观测告警双通道断言（verify_failed_retry，R5-3 锁定）。
 - **最终门禁**：`test:invariant` 42 场景 ✅ · `test` **100 场景 725 步** ✅ ·
   `api:docs` 118 符号 ✅ · `api:check` 无漂移 ✅ · `api:contract` 五类契约 + TSDoc 覆盖率 94.1% ✅。
-- **未做**：R5-1 附注的 defaultShouldCompress 直接单测（建议后续补入 trigger-watermark）。
+- **已闭环**：R5-1 附注的 defaultShouldCompress 直接单测已补入 trigger-watermark.feature（相似消息不误报 + 无关话题如实检出 2 场景，全量 102 场景 739 步）。
