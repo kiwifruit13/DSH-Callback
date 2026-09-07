@@ -14,21 +14,14 @@
 import type { CompressConfig } from './config.js';
 import type { Embedder } from './config.js';
 import type { BudgetAssignment, Segment } from './contract.js';
+import { cosineSimilarity } from './signals.js';
 
-/** embedding 模式的相似度空间：向量化由宿主提供，余弦本地计算。 */
+/** embedding 模式的相似度空间：向量化由宿主提供，余弦本地计算（复用共享实现，P2-2）。 */
 export function createEmbedderSpace(embed: Embedder): SimilaritySpace {
   return {
     vectorize: (text) => embed(text),
     cosine(a, b) {
-      const len = Math.min(a.length, b.length);
-      let dot = 0;
-      let normA = 0;
-      let normB = 0;
-      for (let i = 0; i < a.length; i++) normA += a[i]! * a[i]!;
-      for (let i = 0; i < b.length; i++) normB += b[i]! * b[i]!;
-      for (let i = 0; i < len; i++) dot += a[i]! * b[i]!;
-      if (normA === 0 || normB === 0) return 0;
-      return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+      return cosineSimilarity(a, b);
     },
   };
 }
@@ -48,7 +41,11 @@ export interface AssignBudgetInput {
   readonly anchorText: string;
   /** segmentId → 该段的 **L0 原文**。铁律一：绝不传摘要。 */
   readonly segmentTexts: ReadonlyMap<string, string>;
-  /** 已保留内容的文本（head 与 pin 内容），冗余度对照物。 */
+  /**
+   * 已保留内容的文本，冗余度对照物。
+   * 当前编排器实现只传 pin 约束集文本（不含 head system prompt）——
+   * 与此字段语义保持一致的调用方契约：传「视为已占用的内容」。
+   */
   readonly retainedTexts: readonly string[];
   /** 相似度空间。embedding 关闭时为 TF-IDF 实现，不产生任何网络调用。 */
   readonly space: SimilaritySpace;

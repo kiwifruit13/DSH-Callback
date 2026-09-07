@@ -12,7 +12,7 @@
  * 并发：同 epoch 的并发触发复用同一 in-flight promise，只压一次。
  */
 
-import type { CompressCallbacks, CompressInput } from './callbacks.js';
+import type { CompressCallbacks, CompressInput, ErrorContext } from './callbacks.js';
 import { idempotencyKeyOf } from './callbacks.js';
 import type { ArchiveSink, CompressConfig } from './config.js';
 import type {
@@ -36,21 +36,28 @@ import {
 } from './contract.js';
 import { createArchive, type Archive } from './archive.js';
 import { parseToolBlocks, segmentsAreSafe, selectSegment, totalTokens } from './blocks.js';
-import { runFallbackChain } from './fallback.js';
+import { runFallbackChain, truncateToBudget, type FallbackResult } from './fallback.js';
 import { assignBudget, createEmbedderSpace, type SimilaritySpace } from './gain.js';
 import { l1Denoise } from './levels/l1.js';
 import { l4PointerText } from './levels/l4.js';
 import { resolvePins } from './pins.js';
 import { ALL_ENTITY_CATEGORIES, createVectorSpace } from './signals.js';
-import { shouldCompress } from './trigger.js';
+import { shouldCompress, buildTopicShiftSpace } from './trigger.js';
 import { verifySummary } from './verify.js';
 
 /** 编排器。 */
 export interface Orchestrator {
-  /** 对当前状态评估并（在触发条件满足时）执行一轮压缩。 */
-  maybeCompress(state: ContextState): Promise<ContextState>;
+  /**
+   * 对当前状态评估并（在触发条件满足时）执行一轮压缩。
+   * @param signal 可选整体取消通道（R5-9）：入口已 aborted 直接跳过；
+   * 过程中 aborted 则在提交前放弃（状态逐字节原样），信号同时透传给 compress 钩子。
+   * 并发同 epoch 触发复用首个调用的 signal。语义详情见 ContextCompressor.maybeCompress。
+   */
+  maybeCompress(state: ContextState, signal?: AbortSignal): Promise<ContextState>;
   /** 全部观测记录（按提交顺序）。 */
   observations(): readonly ObservationRecord[];
+  /** 归档门面：宿主经此 rehydrate / rebuildIndex，与内部压缩共享同一实例与索引（P1-8）。 */
+  readonly archive: Archive;
 }
 
 export interface OrchestratorOptions {
@@ -59,9 +66,11 @@ export interface OrchestratorOptions {
 }
 
 /** 压缩块在消息流中的呈现：纯文本 user 消息。 */
+const BLOCK_MSG_PREFIX = 'cb-';
+
 function blockToMessage(block: CompressedBlock): Message {
   return {
-    id: `cb-${block.id}`,
+    id: `${BLOCK_MSG_PREFIX}${block.id}`,
     role: 'user',
     content: block.text,
     vendor: 'generic',
@@ -77,20 +86,32 @@ export function createOrchestrator(options: OrchestratorOptions): Orchestrator {
   // 已提交的最新 epoch（CAS 基准）与最近一次提交（幂等重放锚点：同一状态对象重复请求直接返回缓存结果）
   let committedEpoch = -1;
   let lastCommit: { input: ContextState; result: ContextState } | null = null;
+  /**
+   * 距上次成功压缩经历的调用轮数（§7.1 频率下限 / 等待上限的真实依据）。
+   * 初始为 MAX_SAFE_INTEGER 表示「从未压缩过、不受频率下限约束」；
+   * maybeCompress 的每次新调用推进 +1（幂等重放与 in-flight 复用不计入），
+   * 成功提交压缩后归零。justCompressed 即「上一轮调用刚完成压缩」（值为 1）。
+   */
+  let turnsSinceLastCompress = Number.MAX_SAFE_INTEGER;
 
+  /**
+   * 统一告警入口（R5-3）：onWarning 与本轮 ObservationRecord.warnings 双通道
+   * 共用此函数，消除「onWarning 有、warnings 恒空」的断连。
+   * activeCycleWarnings 由 runCycle 在本轮期间挂载（JS 单线程，runCycle 全程同步持有）。
+   */
+  let activeCycleWarnings: string[] | null = null;
   const warn = (warning: string, details?: Record<string, unknown>): void => {
+    activeCycleWarnings?.push(warning);
     config.onWarning?.(warning, details);
   };
 
-  const emitError = (error: unknown, phase: ObservationRecord | null, hook: string | null, state: ContextState): void => {
+  const emitError = (error: unknown, phase: ErrorContext['phase'], hook: string | null, state: ContextState): void => {
     try {
-      callbacks.onError?.(error, { hook, phase: phaseToName(phase), state });
+      callbacks.onError?.(error, { hook, phase, state });
     } catch {
       // onError 自身的异常被吞掉，不得影响主流程
     }
   };
-
-  const phaseToName = (record: ObservationRecord | null): 'trigger' | 'select' | 'pin' | 'compress' | 'verify' | 'commit' => 'compress';
 
   /** 相似度空间：embedding 开启且提供了 embed 时用之，否则 TF-IDF（无网络调用）。 */
   const buildSpace = (): SimilaritySpace => {
@@ -117,7 +138,8 @@ export function createOrchestrator(options: OrchestratorOptions): Orchestrator {
   ): VerifyReport => {
     if (callbacks.verify !== undefined) {
       try {
-        return callbacks.verify({ original, summary, level: level as CompressLevel, config }, config);
+        // P0-3：VerifyInput 携带 slots，默认校验链才能执行硬槽位逐字定位
+        return callbacks.verify({ original, summary, level: level as CompressLevel, slots, config }, config);
       } catch (error) {
         warn('verify_hook_error', { error: String(error) });
         return { passed: false, entityRetain: emptyRetain(), missing: [], hookError: true, warnings: [] };
@@ -126,7 +148,7 @@ export function createOrchestrator(options: OrchestratorOptions): Orchestrator {
     return verifySummary(original, summary, slots, config);
   };
 
-  /** 对单个段执行压缩（含校验失败处理链），返回最终文本与来源。 */
+  /** 对单个段执行压缩（含校验失败处理链），返回实际生效级别、来源与归档指针。 */
   const compressSegment = async (
     segMsgs: readonly Message[],
     budget: number,
@@ -134,24 +156,34 @@ export function createOrchestrator(options: OrchestratorOptions): Orchestrator {
     epoch: number,
     startId: string,
     endId: string,
-  ): Promise<{ text: string; method: CompressedBlock['method']; degraded: boolean; slots: Parameters<typeof verifySummary>[2] }> => {
+    signal: AbortSignal | undefined,
+  ): Promise<{
+    text: string;
+    method: CompressedBlock['method'];
+    degraded: boolean;
+    slots: Parameters<typeof verifySummary>[2];
+    /** 实际生效级别：归档失败退化 L1 时与入参 level 不同，产物必须按它落盘（P1-2）。 */
+    level: number;
+    /** 内部已完成的那次归档（L2+）；退化 L1 时为 null。调用方不得重复归档。 */
+    archiveRef: Awaited<ReturnType<Archive['archive']>>;
+  }> => {
     const original = segMsgs.map((m) => m.content).join('\n');
 
     // 铁律二 + 归档前提：有损级别（L2+）必须先归档成功
-    let archiveRef = null;
+    let archiveRef: Awaited<ReturnType<Archive['archive']>> = null;
     if (level >= 2) {
       archiveRef = await archive.archive(segMsgs, segMsgs[0]?.vendor ?? 'generic');
       if (archiveRef === null) {
         // 归档不可用：禁止有损下沉，退化为 L1 无损裁剪（仍允许）
         warn('archive-unavailable', { startId, endId, level });
         const l1 = l1Denoise(segMsgs, config);
-        return { text: l1.text, method: 'heuristic', degraded: true, slots: null };
+        return { text: l1.text, method: 'heuristic', degraded: true, slots: null, level: 1, archiveRef: null };
       }
     }
 
     if (level === 1) {
       const l1 = l1Denoise(segMsgs, config);
-      return { text: l1.text, method: 'heuristic', degraded: false, slots: null };
+      return { text: l1.text, method: 'heuristic', degraded: false, slots: null, level: 1, archiveRef: null };
     }
 
     const input: CompressInput = {
@@ -159,59 +191,100 @@ export function createOrchestrator(options: OrchestratorOptions): Orchestrator {
       level: level as 2 | 3,
       budget,
       key: { startId, endId, level: level as 2 | 3, epoch },
-      signal: new AbortController().signal,
+      // R5-9：signal 由 maybeCompress 透传（不再是无源死信号），宿主据此取消网络调用；
+      // 宿主未提供 signal 时为永不中止的空信号（向后兼容语义不变）
+      signal: signal ?? new AbortController().signal,
       config,
+    };
+
+    /** 把校验报告的软实体处置记录转发到告警通道，不静默忽略（P1-3）。 */
+    const reportVerifyWarnings = (report: VerifyReport): void => {
+      for (const detail of report.warnings) {
+        warn('verify_soft_warning', { startId, endId, detail });
+      }
+    };
+
+    /**
+     * 转发降级链告警（R5-4）：FallbackResult.warnings 不再被丢弃。
+     * llm_hook_error 已由 fallback 内部携带详情直发 onWarning，跳过防止双报；
+     * 其余（llm_invalid_schema_attempt_N / llm_aborted / heuristic_over_budget）经统一入口补发。
+     */
+    const FALLBACK_SELF_REPORTED = new Set(['llm_hook_error']);
+    const reportFallbackWarnings = (r: FallbackResult): void => {
+      for (const w of r.warnings) {
+        if (!FALLBACK_SELF_REPORTED.has(w)) warn(w, { startId, endId });
+      }
     };
 
     // 主路径：降级链（llm → heuristic → truncate）
     let result = await runFallbackChain(input, callbacks.compress ?? null, config);
+    reportFallbackWarnings(result);
 
     // §8.2 校验失败处理链：重压一次 → 抽取式 → 硬截断保尾
-    let verify = runVerify(original, result.output.text, level, result.output.slots ?? null);
+    const verify = runVerify(original, result.output.text, level, result.output.slots ?? null);
+    reportVerifyWarnings(verify);
     if (!verify.passed) {
       warn('verify_failed_retry', { startId, endId, missing: verify.missing.length });
       const retry = await runFallbackChain(input, callbacks.compress ?? null, config);
+      reportFallbackWarnings(retry);
       const retryVerify = runVerify(original, retry.output.text, level, retry.output.slots ?? null);
+      reportVerifyWarnings(retryVerify);
       if (retryVerify.passed) {
         result = retry;
-        verify = retryVerify;
       } else {
-        // 降级为 L1 抽取式（输出 ⊆ 输入，硬实体天然保留）
+        // 降级为 L1 抽取式（输出 ⊆ 输入，硬实体天然保留）。
+        // 级别单调不回退：level 仍记目标级别，可信度由 degraded 标记。
         const l1 = l1Denoise(segMsgs, config);
         let text = l1.text;
         let method: CompressedBlock['method'] = 'heuristic';
-        // 抽取式仍超预算 → 硬截断保尾部，截断后重跑一次校验
+        // 抽取式仍超预算 → 硬截断保尾（truncateToBudget 与降级链第三级同一实现，R5-6）
         if (config.countTokens(text) > budget) {
-          text = truncateTail(text, budget, config);
+          text = truncateToBudget(text, budget, config);
           method = 'truncate';
         }
-        verify = runVerify(original, text, level, null);
-        return { text, method, degraded: true, slots: null };
+        // 截断后对保留部分重跑一次校验（`entity-verify`：截断后仍对保留部分重跑一次实体校验）。
+        // 这不是门禁而是性质断言：截断输出 ⊆ l1 输出 ⊆ 原文行子集，硬实体保留率恒 1.0；
+        // 结果必须被消费 —— 软实体处置记录经此上报，不静默丢弃（P1-3，原 P3-2 死赋值的正确形态）。
+        const truncatedVerify = runVerify(original, text, level, null);
+        reportVerifyWarnings(truncatedVerify);
+        if (!truncatedVerify.passed) {
+          warn('verify_failed_after_truncate', { startId, endId, missing: truncatedVerify.missing.length });
+        }
+        return { text, method, degraded: true, slots: null, level, archiveRef };
       }
     }
 
-    return { text: result.output.text, method: result.method, degraded: result.degraded, slots: result.output.slots ?? null };
+    return {
+      text: result.output.text,
+      method: result.method,
+      degraded: result.degraded,
+      slots: result.output.slots ?? null,
+      level,
+      archiveRef,
+    };
   };
 
-  /** 硬截断保尾部。 */
-  const truncateTail = (text: string, budget: number, cfg: CompressConfig): string => {
-    const lines = text.split('\n');
-    const kept: string[] = [];
-    let used = 0;
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const cost = cfg.countTokens(lines[i]!);
-      if (kept.length > 0 && used + cost > budget) break;
-      kept.unshift(lines[i]!);
-      used += cost;
+  const runCycle = async (state: ContextState, signal?: AbortSignal): Promise<ContextState> => {
+    // R5-3：挂载本轮告警收集器，finally 卸载（全部 return 路径不泄漏、不串轮）
+    const warnings: string[] = [];
+    activeCycleWarnings = warnings;
+    try {
+      return await runCycleInner(state, signal, warnings);
+    } finally {
+      activeCycleWarnings = null;
     }
-    return kept.join('\n');
   };
 
-  const runCycle = async (state: ContextState): Promise<ContextState> => {
+  const runCycleInner = async (
+    state: ContextState,
+    signal: AbortSignal | undefined,
+    warnings: string[],
+  ): Promise<ContextState> => {
     const start = Date.now();
     const casEpoch = state.epoch;
-    const warnings: string[] = [];
     const countTokens = config.countTokens;
+    /** 整体取消检查（R5-9）：提交发生前放弃本轮，状态逐字节原样（§9.2）。 */
+    const aborted = (): boolean => signal?.aborted ?? false;
 
     // ---- 触发 ----
     const currentTokens = totalTokens(state.msgs, countTokens);
@@ -220,17 +293,30 @@ export function createOrchestrator(options: OrchestratorOptions): Orchestrator {
     try {
       if (callbacks.shouldCompress !== undefined) {
         const d = callbacks.shouldCompress(evaluated, config);
-        decision = typeof d === 'boolean' ? { compress: d, reason: d ? 'task-boundary' : 'below-trigger', forced: false, epoch: casEpoch } : d;
+        // R5-8：布尔返回无边界语义，如实标注 host-decision，不伪造 task-boundary（其要求携带 cutPointId）
+        decision = typeof d === 'boolean' ? { compress: d, reason: d ? 'host-decision' : 'below-trigger', forced: false, epoch: casEpoch } : d;
       } else {
-        decision = shouldCompress({ state: evaluated, config, turnsSinceLastCompress: turnsSince(state), justCompressed: lastEpochOf(state) === casEpoch - 1 });
+        // 默认触发路径（宿主未注入 shouldCompress 时的唯一路径）：
+        // 轮次状态由本实例真实维护（P0-1/P0-2），topic-shift 边界基于当前用户消息语料计算（P1-4，
+        // 语料构建与 defaultShouldCompress 共用 buildTopicShiftSpace，防止两处漂移）。
+        decision = shouldCompress(
+          {
+            state: evaluated,
+            config,
+            turnsSinceLastCompress,
+            justCompressed: turnsSinceLastCompress === 1,
+          },
+          buildTopicShiftSpace(evaluated),
+        );
       }
     } catch (error) {
       // shouldCompress 异常 → 保守地不压缩
       warn('should_compress_hook_error', { error: String(error) });
-      emitError(new HookError('shouldCompress', error), null, 'shouldCompress', state);
+      emitError(new HookError('shouldCompress', error), 'trigger', 'shouldCompress', state);
       return state;
     }
     if (!decision.compress) return state;
+    if (aborted()) return state; // R5-9：触发后、pin 识别前的取消检查点
 
     // ---- pin 识别（先于切割：pin 决定 head 边界）----
     let pins: readonly PinRecord[];
@@ -239,11 +325,32 @@ export function createOrchestrator(options: OrchestratorOptions): Orchestrator {
       pins = resolved.pins;
       if (resolved.degraded) warnings.push('pin_hook_degraded');
     } catch (error) {
-      emitError(new HookError('onPreCompress', error), null, 'onPreCompress', state);
+      emitError(new HookError('onPreCompress', error), 'pin', 'onPreCompress', state);
       return state;
     }
 
     const pinnedState: ContextState = { ...evaluated, pins };
+
+    // ---- 切点消费（P1-1）：触发层产出的 cutPointId 在此进入链路 ----
+    // 校验其不落入任何 block 内部（铁律三的前哨信号）；切点是参考信号，
+    // 不中止本轮——真正的切割安全由 selectSegment 与提交断言保障。
+    if (decision.cutPointId !== undefined) {
+      const msgIndexForCut = new Map(state.msgs.map((m, i) => [m.id, i]));
+      const cutIdx = msgIndexForCut.get(decision.cutPointId);
+      if (cutIdx === undefined) {
+        warn('cutpoint-not-found', { cutPointId: decision.cutPointId, reason: decision.reason });
+      } else {
+        const insideBlock = pinnedState.blocks.some(
+          (b) => b.msgIds.indexOf(decision.cutPointId!) > 0 && b.msgIds.indexOf(decision.cutPointId!) < b.msgIds.length - 1,
+        );
+        if (insideBlock) {
+          warn('cutpoint_inside_block', {
+            cutPointId: decision.cutPointId,
+            blockId: pinnedState.blocks.find((b) => b.msgIds.includes(decision.cutPointId!))?.id,
+          });
+        }
+      }
+    }
 
     // ---- 切割 ----
     let segments;
@@ -252,7 +359,7 @@ export function createOrchestrator(options: OrchestratorOptions): Orchestrator {
     } catch (error) {
       // selectSegment 异常 → 中止本轮，不回退默认切割（边界错则全盘错）
       warn('select_hook_error', { error: String(error) });
-      emitError(new HookError('selectSegment', error), null, 'selectSegment', state);
+      emitError(new HookError('selectSegment', error), 'select', 'selectSegment', state);
       return state;
     }
     if (segments === null) {
@@ -335,12 +442,14 @@ export function createOrchestrator(options: OrchestratorOptions): Orchestrator {
     const producedBySeg = new Map<string, CompressedBlock>();
     const msgIndex = new Map(state.msgs.map((m, i) => [m.id, i]));
     for (const assignment of assignments) {
+      if (aborted()) return state; // R5-9：逐段压缩间的取消检查点（丢弃未提交的部分产物）
       const seg = allSegments.find((s) => s.id === assignment.segmentId);
       if (seg === undefined) continue;
       const oldBlock = resinkOld.get(seg.id);
 
       // 再下沉语义：级别单调不回退（铁律二）；达 sinkLimit 直接落 L4 且不再调摘要钩子
-      let targetLevel = assignment.targetLevel;
+      // targetLevel 收敛到 maxLevel 内（P3-9：assignBudget 不知道 maxLevel，可能给出更深的级别）
+      let targetLevel = Math.min(assignment.targetLevel, config.maxLevel) as CompressLevel;
       if (oldBlock !== undefined) {
         targetLevel = Math.max(oldBlock.level, targetLevel) as CompressLevel;
         if (oldBlock.compressCount >= config.sinkLimit) {
@@ -412,25 +521,23 @@ export function createOrchestrator(options: OrchestratorOptions): Orchestrator {
             };
           }
         } else {
-          const { text, method, degraded, slots } = await compressSegment(
+          const { text, method, degraded, slots, level: effectiveLevel, archiveRef: segArchiveRef } = await compressSegment(
             segMsgs,
             assignment.budget,
             targetLevel,
             casEpoch,
             seg.startId,
             seg.endId,
+            signal,
           );
-          let archiveRef = null;
-          if (targetLevel >= 2) {
-            archiveRef = await archive.archive(segMsgs, segMsgs[0]?.vendor ?? 'generic');
-          }
+          // P1-2：compressSegment 内部已完成 L2+ 的唯一一次归档，直接复用其指针与实际级别
           produced = {
             id: `cb-${seg.startId}-${seg.endId}`,
-            level: targetLevel,
+            level: effectiveLevel as CompressLevel,
             method,
             text,
             sourceSpan: { startId: seg.startId, endId: seg.endId, msgCount: seg.msgIds.length },
-            archiveRef,
+            archiveRef: segArchiveRef,
             epoch: casEpoch + 1,
             compressCount: oldBlock === undefined ? 1 : oldBlock.compressCount + 1,
             tokens: countTokens(text),
@@ -442,7 +549,7 @@ export function createOrchestrator(options: OrchestratorOptions): Orchestrator {
           throw error; // 三级全失败：向上抛，上下文保持原样
         }
         warn('segment_compress_error', { segmentId: seg.id, error: String(error) });
-        emitError(error, null, 'compress', state);
+        emitError(error, 'compress', 'compress', state);
         return state;
       }
 
@@ -481,6 +588,7 @@ export function createOrchestrator(options: OrchestratorOptions): Orchestrator {
     }
 
     // ---- 提交前三断言 ----
+    if (aborted()) return state; // R5-9：提交前的最终取消检查点（此后进入不可逆提交）
     let replacedTokens = 0;
     for (const [segId] of producedBySeg) {
       const old = resinkOld.get(segId);
@@ -502,8 +610,8 @@ export function createOrchestrator(options: OrchestratorOptions): Orchestrator {
       );
     } catch (error) {
       if (error instanceof CommitAssertFailed) {
-                warn('commit_assert_failed', { assertion: error.assertion, message: error.message });
-        emitError(error, null, null, state);
+        warn('commit_assert_failed', { assertion: error.assertion, message: error.message });
+        emitError(error, 'commit', null, state);
         return state; // 整体回滚
       }
       throw error;
@@ -529,9 +637,23 @@ export function createOrchestrator(options: OrchestratorOptions): Orchestrator {
     };
     committedEpoch = casEpoch + 1;
     lastCommit = { input: state, result: committed };
+    turnsSinceLastCompress = 0; // 本轮刚完成压缩：频率下限与 justCompressed 的基准（P0-1）
 
     // ---- 观测 ----
-    const headTokens = nextTokens - blocks.reduce((s, b) => s + b.tokens, 0);
+    // P1-5：cacheImpact 不再硬编码，改为真实比对——
+    // prefixStable：从头逐引用比对，第一处差异必须恰好是压缩块呈现消息（cb- 前缀）；
+    // 消息不可变设计下引用相同即逐字节相同。
+    let firstDiff = 0;
+    const commonLen = Math.min(state.msgs.length, nextMsgs.length);
+    while (firstDiff < commonLen && state.msgs[firstDiff] === nextMsgs[firstDiff]) firstDiff++;
+    // R5-8：稳定前缀要求至少保留一条原始消息 —— 首条消息即被压缩块替换时
+    // 不存在任何稳定前缀，不得报 true（head 被清空却称前缀稳定）。
+    const prefixStable =
+      firstDiff > 0 && (firstDiff >= nextMsgs.length || nextMsgs[firstDiff]!.id.startsWith(BLOCK_MSG_PREFIX));
+    // breakpointAfterHead：库不管理 cache_control 断点位置，能验证的是
+    // 「首个压缩块之前存在头部消息」，即断点可置于头部之后、首个压缩块之前。
+    const firstBlockIdx = nextMsgs.findIndex((m) => m.id.startsWith(BLOCK_MSG_PREFIX));
+    const breakpointAfterHead = firstBlockIdx > 0;
     // 观测的 level / method 描述本轮的主要压缩来源：取第一个实体压缩块
     // （method !== 'none'）；纯 L4 指针轮次才回退到 blocks[0]
     const mainBlock = blocks.find((b) => b.method !== 'none') ?? blocks[0];
@@ -546,29 +668,35 @@ export function createOrchestrator(options: OrchestratorOptions): Orchestrator {
       degraded: blocks.some((b) => b.degraded),
       pinCount: pins.length,
       cacheImpact: {
-        prefixStable: true, // head 消息保持原引用，逐字节不变
-        breakpointAfterHead: true,
+        prefixStable,
+        breakpointAfterHead,
       },
+      triggerReason: decision.reason,
       warnings,
     };
     records.push(record);
     config.onObservation?.(record);
-    void headTokens;
 
     return committed;
   };
 
   return {
-    maybeCompress(state: ContextState): Promise<ContextState> {
-      // 幂等重放：同一状态对象重复请求 → 直接返回上次提交结果，不重跑任何钩子（§9.3）
+    archive,
+    maybeCompress(state: ContextState, signal?: AbortSignal): Promise<ContextState> {
+      // R5-9：入口已取消 → 直接跳过本轮，不推进轮次、不跑任何钩子
+      if (signal?.aborted) return Promise.resolve(state);
+      // 幂等重放：同一状态对象重复请求 → 直接返回上次提交结果，不重跑任何钩子（§9.3），也不推进轮次
       if (lastCommit !== null && state === lastCommit.input) {
         return Promise.resolve(lastCommit.result);
       }
       const existing = inFlight.get(state.epoch);
-      if (existing !== undefined) return existing; // 并发触发复用同一 promise
-      const promise = runCycle(state)
+      if (existing !== undefined) return existing; // 并发触发复用同一 promise，不推进轮次
+      // 新一轮调用：轮次推进（P0-1）。首次压缩前保持「无历史」（不限制频率下限），
+      // 避免与 MIN_SAFE 语义混淆；成功提交后归零，此后逐轮 +1。
+      if (turnsSinceLastCompress !== Number.MAX_SAFE_INTEGER) turnsSinceLastCompress += 1;
+      const promise = runCycle(state, signal)
         .catch((error) => {
-          emitError(error, null, null, state);
+          emitError(error, 'compress', null, state);
           return state; // 任何未预期异常：上下文逐字节原样
         })
         .finally(() => {
@@ -582,15 +710,6 @@ export function createOrchestrator(options: OrchestratorOptions): Orchestrator {
       return [...records];
     },
   };
-}
-
-/** 距上次压缩的轮数占位：由 host 通过状态外信息维护时覆盖此默认（当前以 epoch 差近似）。 */
-function turnsSince(state: ContextState): number {
-  return state.epoch === 0 ? Number.MAX_SAFE_INTEGER : 1;
-}
-
-function lastEpochOf(state: ContextState): number {
-  return state.compressed.length > 0 ? state.compressed[state.compressed.length - 1]!.epoch : -1;
 }
 
 /**

@@ -39,6 +39,8 @@ function isToolResultMessage(msg) {
  */
 export function parseToolBlocks(msgs, countTokens) {
     const blocks = [];
+    // P3-7：finish 内按 id 取消息改用预建索引，避免逐块 msgs.find 的 O(n²)
+    const msgById = new Map(msgs.map((m) => [m.id, m]));
     /** 当前正在累积的块。 */
     let currentIds = [];
     let pending = new Set();
@@ -47,7 +49,7 @@ export function parseToolBlocks(msgs, countTokens) {
     const finish = (complete, malformed) => {
         if (currentIds.length === 0)
             return;
-        const blockMsgs = currentIds.map((id) => msgs.find((m) => m.id === id)).filter((m) => m !== undefined);
+        const blockMsgs = currentIds.map((id) => msgById.get(id)).filter((m) => m !== undefined);
         blocks.push({
             id: currentId,
             startId: firstId,

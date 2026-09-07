@@ -10,24 +10,13 @@
  * - 全部段增益相同时按原始顺序稳定分配，同一输入两次执行结果逐字节相同；
  * - 已下沉段的增益基于 rehydrate 取回的 L0 原文计算，不用摘要文本（与铁律一一致）。
  */
-/** embedding 模式的相似度空间：向量化由宿主提供，余弦本地计算。 */
+import { cosineSimilarity } from './signals.js';
+/** embedding 模式的相似度空间：向量化由宿主提供，余弦本地计算（复用共享实现，P2-2）。 */
 export function createEmbedderSpace(embed) {
     return {
         vectorize: (text) => embed(text),
         cosine(a, b) {
-            const len = Math.min(a.length, b.length);
-            let dot = 0;
-            let normA = 0;
-            let normB = 0;
-            for (let i = 0; i < a.length; i++)
-                normA += a[i] * a[i];
-            for (let i = 0; i < b.length; i++)
-                normB += b[i] * b[i];
-            for (let i = 0; i < len; i++)
-                dot += a[i] * b[i];
-            if (normA === 0 || normB === 0)
-                return 0;
-            return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+            return cosineSimilarity(a, b);
         },
     };
 }

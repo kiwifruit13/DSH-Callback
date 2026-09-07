@@ -5,7 +5,12 @@
  * 1. 无 LLM / 钩子失败时的**抽取式兜底**：硬槽位直接摘抄原文行，
  *    天然满足「constraints、artifacts、todos 逐字定位」（`level-sinking` 硬槽位场景）；
  * 2. 硬槽位逐字校验，供 verify 阶段复用。
+ *
+ * 接线现状（P3-4）：两者都是**公共兜底工具**（自 index.ts 导出），宿主自定义
+ * compress/verify 钩子时可直接复用；框架主链路当前不经过它们 ——
+ * 降级链的 heuristic 级走 l3Coarsen（纯文本），verify 的槽位校验在 verify.ts 内实现。
  */
+import { DEFAULT_CONFIG } from '../config.js';
 import { KW_ARTIFACT, KW_CONSTRAINT, RE_COMMAND, RE_POSIX_PATH, RE_TODO_DONE, RE_TODO_PENDING, RE_URL, RE_WINDOWS_PATH, matchAll, } from '../patterns.js';
 /** 行是否包含硬实体（路径 / URL / 命令）。 */
 function hasHardEntity(line) {
@@ -17,8 +22,11 @@ function hasHardEntity(line) {
 /**
  * 从原文抽取分槽位摘要。
  * 全部硬槽位取值都是原文的逐字行，narrative 也取原文行（兜底路径不引入改写）。
+ *
+ * @param config 可选配置覆盖；narrative 上限缺省取 `DEFAULT_CONFIG.l2NarrativeMaxLines`（P3-5）
  */
-export function extractSlots(msgs) {
+export function extractSlots(msgs, config) {
+    const narrativeMax = config?.l2NarrativeMaxLines ?? DEFAULT_CONFIG.l2NarrativeMaxLines;
     const constraints = [];
     const artifacts = [];
     const todos = [];
@@ -40,7 +48,7 @@ export function extractSlots(msgs) {
                 artifacts.push(trimmed);
                 continue;
             }
-            if (narrative.length < 6)
+            if (narrative.length < narrativeMax)
                 narrative.push(trimmed);
         }
     }

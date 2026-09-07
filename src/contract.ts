@@ -247,7 +247,12 @@ export type TriggerReason =
   /** 触发钩子抛异常，保守地不压缩。 */
   | 'hook-error'
   /** 占用超线但仍在等待任务边界，且未超等待上限。 */
-  | 'waiting-boundary';
+  | 'waiting-boundary'
+  /**
+   * 宿主以布尔形式返回 shouldCompress（R5-8）：库无法得知真实原因，
+   * 如实标注为宿主决策，不伪造 task-boundary（该原因要求携带 cutPointId）。
+   */
+  | 'host-decision';
 
 /** 任务边界类型。切点优先落在这类边界上。 */
 export type BoundaryType =
@@ -375,6 +380,11 @@ export interface ObservationRecord {
   readonly degraded: boolean;
   readonly pinCount: number;
   readonly cacheImpact: CacheImpact;
+  /**
+   * 本轮触发原因（R5-8 可观测性扩展，可选以保持向后兼容）。
+   * 宿主布尔返回的 shouldCompress 如实标注为 'host-decision'，不伪造 task-boundary。
+   */
+  readonly triggerReason?: TriggerReason;
   /** 本轮告警。 */
   readonly warnings: readonly string[];
 }

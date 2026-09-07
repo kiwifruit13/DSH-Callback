@@ -108,6 +108,7 @@ pin 理由枚举。
 | `"no-safe-cut"` | 找不到安全切点，放弃本轮。 |
 | `"hook-error"` | 触发钩子抛异常，保守地不压缩。 |
 | `"waiting-boundary"` | 占用超线但仍在等待任务边界，且未超等待上限。 |
+| `"host-decision"` | 宿主以布尔形式返回 shouldCompress（R5-8）：库无法得知真实原因， 如实标注为宿主决策，不伪造 task-boundary（该原因要求携带 cutPointId）。 |
 
 ## `Vendor`
 

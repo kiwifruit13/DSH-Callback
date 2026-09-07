@@ -86,11 +86,16 @@ Then('报告标记缺失的具体实体值以便定位', function () {
     assert.ok(this.report.missing.length > 0);
 });
 /** 两个 tool block 的会话：segA 为被测段，segB 保证 segA 不是最低增益（否则被强转 L4）。 */
-function twoBlockSession(mainContent) {
-    return new HistoryBuilder()
-        .system()
-        .user('任务')
-        .toolRound('read_file', mainContent)
+function twoBlockSession(main) {
+    const builder = new HistoryBuilder().system().user('任务');
+    // segA：一次 assistant 轮的**并行工具调用**，三条 result 消息同属一个 block。
+    // 两个约束缺一不可：
+    // 1. P2-7 后 duplicate-read 是消息级去重——跨消息才裁剪，同一条消息内的多行互不为重复；
+    // 2. l1Denoise 以段（block）为单位执行——重复读取必须落在同一 block 的不同消息里，
+    //    跨 block 无法进入同一次去噪（且单 call 多 result 会因 pending 收口成孤儿消息）。
+    builder.assistant('调用 read_file', main.map((_, index) => ({ id: `call-a${index + 1}`, name: 'read_file', args: {} })));
+    main.forEach((line, index) => builder.tool(`call-a${index + 1}`, line));
+    return builder
         .assistant('参考', [{ id: 'call-b', name: 'read', args: {} }])
         .tool('call-b', [
         '参考记录 commit f0e1d2c3 版本一 FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF',
@@ -101,8 +106,9 @@ function twoBlockSession(mainContent) {
         .build();
 }
 /**
- * 被测段夹具：同指纹（hash）三次出现 → L1 duplicate-read 只保留最后一行，
- * 因此 L1 输出 token 远小于整段，可用于「heuristic 不截断」与「超预算截断」两类断言。
+ * 被测段夹具：同一指纹（hash a1b2c3d4）在**三条 tool result 消息**中重复出现
+ * → L1 duplicate-read 只保留最新的那条消息，L1 输出 token 远小于整段，
+ * 可用于「heuristic 不截断」与「超预算截断」两类断言。
  * 注意：实体用 hash 而非路径/URL —— 路径与 URL 会触发 deliverable-path pin，
  * 把整个 block 锁死导致无段可压。
  */
@@ -110,7 +116,7 @@ const MAIN_CONTENT = [
     'commit a1b2c3d4 保存了输出 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
     'commit a1b2c3d4 保存了输出 BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
     '结果已记录 commit a1b2c3d4',
-].join('\n');
+];
 /** 最后一个非 L4 指针的压缩块（被测块）。L4 指针 method='none'，不参与降级链断言。 */
 function blockUnderTest() {
     const blocks = this.lastCommitted?.compressed ?? [];
@@ -161,8 +167,8 @@ Given('重压后的摘要硬实体保留率仍不足 1.0', function () {
         return verifyEntities(input.original, input.summary, cfg);
     };
     this.msgs = twoBlockSession(MAIN_CONTENT);
-    // 预算取 20：高于 L1 抽取式输出（约 10 token）但低于整段 token 的一半，
-    // 保证目标段落 L2/L3 且 L1 结果不被截断（method 保持 heuristic）
+    // 预算标定（夹具实测）：segA 整段 27 token，L1 降级输出 11 token。
+    // 20 ∈ [14, 27)：≥ segA/2 保 L2（compress 钩子被调用），≥ 11 保降级后 L1 输出不被截断（method 保持 heuristic）
     this.configOverrides = { ...this.configOverrides, targetBudgetTokens: 20 };
     this.makeConfig();
     this.state = this.buildState(this.msgs);

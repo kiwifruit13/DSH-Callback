@@ -35,7 +35,7 @@ export { resolvePins, identifyStaticPins, identifyIncompleteBlockPins, dedupePin
 /* ---- 归档与回溯 ---- */
 export { createArchive, hashMessages, defaultHash, MemoryArchiveSink, JsonlArchiveSink, } from './archive.js';
 /* ---- 向量与增益 ---- */
-export { splitTokens, createVectorSpace } from './signals.js';
+export { splitTokens, createVectorSpace, cosineSimilarity } from './signals.js';
 export { assignBudget, createEmbedderSpace } from './gain.js';
 /* ---- 校验 ---- */
 export { verifyEntities, verifySummary } from './verify.js';

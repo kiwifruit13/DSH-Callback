@@ -65,12 +65,12 @@ export { DEFAULT_CONFIG, defaultTokenCounter, resolveConfig, ConfigError } from 
 export type {
   IdempotencyKey,
   SummarySlots,
+  HardSlots,
   CompressInput,
   CompressOutput,
   VerifyInput,
   ErrorContext,
   CompressCallbacks,
-  FallbackLevel,
 } from './callbacks.js';
 export { idempotencyKeyOf } from './callbacks.js';
 
@@ -127,7 +127,7 @@ export {
 export type { Archive, HashFn } from './archive.js';
 
 /* ---- 向量与增益 ---- */
-export { splitTokens, createVectorSpace } from './signals.js';
+export { splitTokens, createVectorSpace, cosineSimilarity } from './signals.js';
 export type { VectorSpace } from './signals.js';
 export { assignBudget, createEmbedderSpace } from './gain.js';
 export type { SimilaritySpace, AssignBudgetInput } from './gain.js';

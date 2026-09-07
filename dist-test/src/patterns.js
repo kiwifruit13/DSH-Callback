@@ -28,8 +28,8 @@ export const RE_POSIX_PATH = /(?:\/[\w.@-]+){2,}/;
 export const RE_URL = /https?:\/\/[^\s)"'<>]+/;
 /** UUID。 */
 export const RE_UUID = /\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/;
-/** commit hash 一类十六进制串（7–40 位）。 */
-export const RE_HASH = /\b[0-9a-f]{7,40}\b/;
+/** commit hash 一类十六进制串（7–40 位，大小写均可——git 短 hash 可能输出大写）。 */
+export const RE_HASH = /\b[0-9a-fA-F]{7,40}\b/;
 /** 反引号包裹的命令与符号。 */
 export const RE_COMMAND = /`[^`\n]+`/;
 /** 未完成待办：`- [ ]`、`TODO:`、`待办：`。 */
