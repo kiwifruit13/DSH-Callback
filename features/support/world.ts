@@ -86,7 +86,7 @@ export class CompressWorld extends World {
   /** 场景内持久编排器（幂等 / 并发 / CAS 场景必须复用同一实例）。 */
   private cachedOrchestrator: Orchestrator | null = null;
   /** 场景直接构造的门面实例（「只实现 compress」场景用）。 */
-  pendingCompressor: { maybeCompress(state: ContextState): Promise<ContextState> } | null = null;
+  pendingCompressor: { maybeCompress(state: ContextState, signal?: AbortSignal): Promise<ContextState> } | null = null;
   /** 场景级暂存文本（路径断言等）。 */
   winPath: string | null = null;
   /* 以下为各 feature 步骤的场景级暂存。 */
@@ -124,6 +124,15 @@ export class CompressWorld extends World {
   rebuiltCount: number | null = null;
   sharedBlocks: readonly (import('../../src/contract.js').CompressedBlock | null)[] | null = null;
   sharedRehydrated: readonly (readonly Message[] | null)[] | null = null;
+  /* default-facade 场景暂存 */
+  facadeCompressedAfterRound1: number | null = null;
+  facadeRound2Results: (ContextState | null)[] | null = null;
+  facadeFakeSlotValue: string | null = null;
+  /** R5-9 取消通道场景：外部取消信号与 compress 钩子是否收到已中止信号。 */
+  facadeSignal: AbortSignal | null = null;
+  facadeHookSawAbort: boolean | null = null;
+  /** R5-9/R5-8 场景：压缩前的观测记录基线数量。 */
+  facadeBaselineObservations: number | null = null;
 
   /** 合并 configOverrides 与临时覆盖，产出本场景生效配置。 */
   makeConfig(overrides: Partial<CompressConfig> = {}): CompressConfig {

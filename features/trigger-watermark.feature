@@ -65,7 +65,6 @@ Feature: 触发策略与 prompt cache 友好性
     When 调用 should_compress
     Then 返回不压缩决策
     And 决策原因记为 rate-limit
-    And 指标 compress_deferred_count 增加 1
 
   # 以下三个场景超出规划 §12.5 的五个，补全 §7.2 prompt cache 对策的可验证部分。
   # 理由：§7.2 提出了三条对策但原清单一条都没覆盖，而 cache miss 是本方案最主要的成本来源；

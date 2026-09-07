@@ -101,6 +101,11 @@ export function l1Denoise(msgs: readonly Message[], config: CompressConfig): L1R
       continue;
     }
     if (successSeen.has(fp) && row.keep) {
+      // referenced-later 全规则覆盖（P2-7）：被后续显式引用的输出不裁剪
+      if (referencedLater(row, msgs)) {
+        row.rule = 'referenced-later';
+        continue;
+      }
       row.keep = false;
       row.rule = 'superseded-result';
     }
@@ -119,10 +124,15 @@ export function l1Denoise(msgs: readonly Message[], config: CompressConfig): L1R
   });
   for (const indices of byFp.values()) {
     if (indices.length < 2) continue;
-    const last = indices[indices.length - 1]!;
+    // 消息级语义（P2-7）：契约粒度是「同一文件的重复读取输出只保留最新一次」，
+    // 输出 = 消息。同一条消息内的多行是同一次输出，互不为重复；
+    // 只在跨消息时去重 —— 保留最新消息的全部行，删除较早消息中的行。
+    const msgIndices = new Set(indices.map((i) => rows[i]!.msgIndex));
+    if (msgIndices.size < 2) continue;
+    const latestMsgIndex = Math.max(...msgIndices);
     for (const i of indices) {
-      if (i === last) continue;
       const row = rows[i]!;
+      if (row.msgIndex === latestMsgIndex) continue;
       if (!row.keep) continue; // 已被更高优先级规则（superseded-result）处置
       if (referencedLater(row, msgs)) {
         row.rule = 'referenced-later';
@@ -167,8 +177,14 @@ export function l1Denoise(msgs: readonly Message[], config: CompressConfig): L1R
       const last = run[run.length - 1]!;
       for (const i of run) {
         if (i === last) continue;
-        rows[i]!.keep = false;
-        rows[i]!.rule = 'repeated-failure';
+        const row = rows[i]!;
+        // referenced-later 全规则覆盖（P2-7）：重复失败行若被后续显式引用同样不裁剪
+        if (referencedLater(row, msgs)) {
+          row.rule = 'referenced-later';
+          continue;
+        }
+        row.keep = false;
+        row.rule = 'repeated-failure';
       }
     }
     run = [];

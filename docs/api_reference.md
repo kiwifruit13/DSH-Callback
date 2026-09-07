@@ -3,7 +3,7 @@
 > 本文档由 `scripts/generate-api-docs.ts` 自动生成，以代码为唯一真相源。
 > 人工修改会被下次生成覆盖。若需更新 API 描述，请修改源码 TSDoc 后重新生成。
 
-共 117 个公开符号，入口 `src/index.ts`。
+共 118 个公开符号，入口 `src/index.ts`。
 
 ## src/api.ts
 
@@ -19,9 +19,10 @@ export interface ContextCompressor {
 
 | 成员 | 类型 | 可选 | 说明 |
 |---|---|---|---|
-| `maybeCompress` | `(state: ContextState) => Promise<ContextState>` | 否 | 对当前状态评估并执行（或跳过）一轮压缩。 返回值要么是全新的 ContextState（已提交，epoch+1）， 要么是原状态引用逐字节不变（未触发 / 中止 / 回滚）。 |
+| `maybeCompress` | `(state: ContextState, signal?: AbortSignal \| undefined) => Promise<ContextState>` | 否 | 对当前状态评估并执行（或跳过）一轮压缩。 返回值要么是全新的 ContextState（已提交，epoch+1）， 要么是原状态引用逐字节不变（未触发 / 中止 / 回滚）。 |
 | `observations` | `() => readonly ObservationRecord[]` | 否 | 全部观测记录。 |
 | `config` | `CompressConfig` | 否 | 生效配置（合并默认值后）。 |
+| `archive` | `Archive` | 否 | 归档门面（P1-8）：rehydrate / rebuildIndex 的公共入口。 与内部压缩共享同一实例与索引——凭压缩块的 archiveRef 随时取回 L0 原文， 进程重启后可 rebuildIndex() 从 JSONL 重建。 |
 
 ### `CreateCompressorOptions`
 
@@ -34,7 +35,7 @@ export interface CreateCompressorOptions {
 | 成员 | 类型 | 可选 | 说明 |
 |---|---|---|---|
 | `config` | `Partial<CompressConfig> \| undefined` | 是 | 配置覆盖。未提供的项取 DEFAULT_CONFIG 占位值，建议按 §13 标定后显式传入。 |
-| `callbacks` | `CompressCallbacks` | 否 | 宿主回调。compress 为必填语义，其余钩子缺省走默认实现。 |
+| `callbacks` | `CompressCallbacks` | 否 | 宿主回调。compress 为必填语义，shouldCompress 缺省走编排器内置路径，其余钩子缺省走 DEFAULT_CALLBACKS。 |
 
 ### `createContextCompressor`
 
@@ -214,7 +215,7 @@ class MemoryArchiveSink
 
 **种类**：接口 · **定义模块**：`src/callbacks.ts`
 
-六个可注入钩子。全部可选，缺省走默认实现。
+六个可注入钩子。除 compress（必填）外全部可选：shouldCompress 缺省走编排器内置路径，其余缺省走 DEFAULT_CALLBACKS。
 
 ```ts
 export interface CompressCallbacks {
@@ -279,20 +280,21 @@ export interface ErrorContext {
 | `phase` | `"trigger" \| "select" \| "pin" \| "compress" \| "verify" \| "commit"` | 否 | 所处阶段。 |
 | `state` | `ContextState` | 否 | 出错时的上下文快照引用。 |
 
-### `FallbackLevel`
+### `HardSlots`
 
 **种类**：接口 · **定义模块**：`src/callbacks.ts`
 
-降级链每一级的实现签名，供 {@link CompressCallbacks.compress} 之外的兜底级复用。
+参与逐字校验的**硬槽位**取值集合（P0-3 引入的校验入参形状）。
 
 ```ts
-export interface FallbackLevel {
+export interface HardSlots {
 ```
 
 | 成员 | 类型 | 可选 | 说明 |
 |---|---|---|---|
-| `method` | `CompressMethod` | 否 |  |
-| `run` | `(input: CompressInput, signal: AbortSignal) => CompressOutput \| Promise<CompressOutput>` | 否 |  |
+| `constraints` | `readonly string[]` | 否 | 用户硬约束，逐字摘抄。 |
+| `artifacts` | `readonly string[]` | 否 | 交付物路径与标识，逐字摘抄。 |
+| `todos` | `readonly string[]` | 否 | 待办项，逐字摘抄。 |
 
 ### `IdempotencyKey`
 
@@ -353,6 +355,7 @@ export interface VerifyInput {
 | `original` | `string` | 否 | 原文文本。 |
 | `summary` | `string` | 否 | 待校验的摘要文本。 |
 | `level` | `CompressLevel` | 否 | 摘要所属级别。 |
+| `slots` | `HardSlots \| null \| undefined` | 是 | L2 及以上的分槽位结果（P0-3）。 编排层把 compress 产出的槽位传到这里，默认校验链据此执行 「constraints / artifacts / todos 逐字定位」的硬槽位校验； 无槽位（L1 / 纯文本输出）时为 null 或缺省。 |
 | `config` | `CompressConfig` | 否 |  |
 
 ## src/config.ts
@@ -425,6 +428,7 @@ export interface CompressConfig {
 | `tokenEstimateTolerance` | `number` | 否 | 提交断言：next_msgs 实际 token 数与预估值的容许偏差比例，超出则回滚。 |
 | `l1OversizeLines` | `number` | 否 | 单条工具 stdout 超过该行数视为超长，只保留首尾。 |
 | `l1EdgeKeepLines` | `number` | 否 | 超长 stdout 保留的首部与尾部行数。 |
+| `l2NarrativeMaxLines` | `number` | 否 | L2 兜底抽取的 narrative 最大行数（P3-5：不再硬编码于 levels/l2.ts）。 |
 | `archive` | `ArchiveSink \| null` | 否 | 归档存储。为 null 表示无归档能力，此时禁止有损下沉。 |
 | `countTokens` | `TokenCounter` | 否 | token 计数器。 |
 | `embed` | `Embedder \| null` | 否 | 文本向量化器。embeddingEnabled 为 true 时必须提供。 |
@@ -464,7 +468,7 @@ CompressConfig
 
 **种类**：函数 · **定义模块**：`src/config.ts`
 
-内置 token 估算：中英文混排的保守近似。 中文按字符计，拉丁按空白与标点切分计，另加每条约 4 token 的消息开销。 宿主环境应提供真实 tokenizer 替换它。
+内置 token 估算：中英文混排的保守近似。 中文按字符计（P2-9：字符类覆盖 CJK 统一表意区、假名区、CJK 符号标点区 U+3000-303F 与全角形式区 U+FF01-FF60 —— 中文标点不再粘进 latin 词导致计数系统性偏低）， 拉丁按空白与标点切分计。宿主环境应提供真实 tokenizer 替换它。
 
 ```ts
 (text: string): number
@@ -915,6 +919,7 @@ export interface ObservationRecord {
 | `degraded` | `boolean` | 否 | 本轮是否走了降级。 |
 | `pinCount` | `number` | 否 |  |
 | `cacheImpact` | `CacheImpact` | 否 |  |
+| `triggerReason` | `TriggerReason \| undefined` | 是 | 本轮触发原因（R5-8 可观测性扩展，可选以保持向后兼容）。 宿主布尔返回的 shouldCompress 如实标注为 'host-decision'，不伪造 task-boundary。 |
 | `warnings` | `readonly string[]` | 否 | 本轮告警。 |
 
 ### `PIN_REASON_PRIORITY`
@@ -1121,6 +1126,11 @@ export interface TriggerDecision {
   | 'hook-error'
   /** 占用超线但仍在等待任务边界，且未超等待上限。 */
   | 'waiting-boundary'
+  /**
+   * 宿主以布尔形式返回 shouldCompress（R5-8）：库无法得知真实原因，
+   * 如实标注为宿主决策，不伪造 task-boundary（该原因要求携带 cutPointId）。
+   */
+  | 'host-decision'
 ```
 
 **取值**：
@@ -1134,6 +1144,7 @@ export interface TriggerDecision {
 - `"no-safe-cut"` — 找不到安全切点，放弃本轮。
 - `"hook-error"` — 触发钩子抛异常，保守地不压缩。
 - `"waiting-boundary"` — 占用超线但仍在等待任务边界，且未超等待上限。
+- `"host-decision"` — 宿主以布尔形式返回 shouldCompress（R5-8）：库无法得知真实原因， 如实标注为宿主决策，不伪造 task-boundary（该原因要求携带 cutPointId）。
 
 ### `Vendor`
 
@@ -1179,10 +1190,10 @@ export interface VerifyReport {
 默认回调集。**compress 不在其中** —— 它是宿主唯一必须提供的钩子。
 
 ```ts
-Omit<CompressCallbacks, 'compress'>
+Omit<CompressCallbacks, 'compress' | 'shouldCompress'>
 ```
 
-**值**：`{ shouldCompress: (state, config) => { const space = createVectorSpace(); // 门面不持有轮次历史：epoch 0（从未压缩过）视为不受频率下限约束， // 否则默认…`
+**值**：`{ selectSegment: defaultSelectSegment, onPreCompress: defaultOnPreCompress, verify: defaultVerify, onError: defaultOnErr…`
 
 ### `defaultOnError`
 
@@ -1218,7 +1229,7 @@ Omit<CompressCallbacks, 'compress'>
 
 **种类**：函数 · **定义模块**：`src/defaults.ts`
 
-默认触发判定：双水位 + 迟滞 + 任务边界 + 频率下限。
+默认触发判定：双水位 + 迟滞 + 任务边界 + 频率下限。 供宿主**显式**包装使用；编排器内置路径不经过它（见 DEFAULT_CALLBACKS 注释）。 ctx 的 turnsSinceLastCompress / justCompressed 必须由调用方真实维护， 传占位值会复现 minGapTurns 永久抑制 / 迟滞带失效的问题。
 
 ```ts
 (ctx: TriggerContext): TriggerDecision
@@ -1228,7 +1239,7 @@ Omit<CompressCallbacks, 'compress'>
 
 **种类**：函数 · **定义模块**：`src/defaults.ts`
 
-默认实体校验：正则硬/软实体 + 硬槽位逐字定位。
+默认实体校验：正则硬/软实体 + 硬槽位逐字定位（slots 由编排层经 VerifyInput 传入，P0-3）。
 
 ```ts
 (input: VerifyInput, config: CompressConfig): VerifyReport
@@ -1286,14 +1297,14 @@ export interface AssignBudgetInput {
 | `segments` | `readonly Segment[]` | 否 | 待分配的中部段。 |
 | `anchorText` | `string` | 否 | anchor 文本：pin 约束集的拼接。 |
 | `segmentTexts` | `ReadonlyMap<string, string>` | 否 | segmentId → 该段的 **L0 原文**。铁律一：绝不传摘要。 |
-| `retainedTexts` | `readonly string[]` | 否 | 已保留内容的文本（head 与 pin 内容），冗余度对照物。 |
+| `retainedTexts` | `readonly string[]` | 否 | 已保留内容的文本，冗余度对照物。 当前编排器实现只传 pin 约束集文本（不含 head system prompt）—— 与此字段语义保持一致的调用方契约：传「视为已占用的内容」。 |
 | `space` | `SimilaritySpace` | 否 | 相似度空间。embedding 关闭时为 TF-IDF 实现，不产生任何网络调用。 |
 
 ### `createEmbedderSpace`
 
 **种类**：函数 · **定义模块**：`src/gain.ts`
 
-embedding 模式的相似度空间：向量化由宿主提供，余弦本地计算。
+embedding 模式的相似度空间：向量化由宿主提供，余弦本地计算（复用共享实现，P2-2）。
 
 ```ts
 (embed: Embedder): SimilaritySpace
@@ -1349,7 +1360,7 @@ export interface L1Result {
 从原文抽取分槽位摘要。 全部硬槽位取值都是原文的逐字行，narrative 也取原文行（兜底路径不引入改写）。
 
 ```ts
-(msgs: readonly Message[]): SummarySlots
+(msgs: readonly Message[], config?: Pick<CompressConfig, "l2NarrativeMaxLines"> | undefined): SummarySlots
 ```
 
 ### `verifyHardSlots`
@@ -1408,8 +1419,9 @@ export interface Orchestrator {
 
 | 成员 | 类型 | 可选 | 说明 |
 |---|---|---|---|
-| `maybeCompress` | `(state: ContextState) => Promise<ContextState>` | 否 | 对当前状态评估并（在触发条件满足时）执行一轮压缩。 |
+| `maybeCompress` | `(state: ContextState, signal?: AbortSignal \| undefined) => Promise<ContextState>` | 否 | 对当前状态评估并（在触发条件满足时）执行一轮压缩。 |
 | `observations` | `() => readonly ObservationRecord[]` | 否 | 全部观测记录（按提交顺序）。 |
+| `archive` | `Archive` | 否 | 归档门面：宿主经此 rehydrate / rebuildIndex，与内部压缩共享同一实例与索引（P1-8）。 |
 
 ### `OrchestratorOptions`
 
@@ -1490,13 +1502,13 @@ RegExp
 
 **种类**：常量 · **定义模块**：`src/patterns.ts`
 
-commit hash 一类十六进制串（7–40 位）。
+commit hash 一类十六进制串（7–40 位，大小写均可——git 短 hash 可能输出大写）。
 
 ```ts
 RegExp
 ```
 
-**值**：`/\b[0-9a-f]{7,40}\b/`
+**值**：`/\b[0-9a-fA-F]{7,40}\b/`
 
 ### `RE_POSIX_PATH`
 
@@ -1588,7 +1600,7 @@ Readonly<Record<'number-percent' | 'person-name', RegExp>>
 
 **种类**：函数 · **定义模块**：`src/pins.ts`
 
-合并去重：同一条消息只保留一条 pin，reason 取优先级最高者。 局部 pin（带 span）优先于整条 pin，避免为图省事把整条长消息锁死。
+合并去重（P2-1）。
 
 ```ts
 (hits: readonly PinRecord[]): PinRecord[]
@@ -1650,6 +1662,16 @@ export interface PinResolveResult {
 ```
 
 ## src/signals.ts
+
+### `cosineSimilarity`
+
+**种类**：函数 · **定义模块**：`src/signals.ts`
+
+共享余弦相似度（P2-2：TF-IDF 与 embedding 两种空间复用同一实现）。 点积只累积共同维度（min(len) 界限），维度不等的向量（如宿主 embed 模型维度漂移） 不会把 undefined 混入运算产生 NaN；任一范数为 0 时返回 0。
+
+```ts
+(a: readonly number[], b: readonly number[]): number
+```
 
 ### `createVectorSpace`
 
@@ -1760,5 +1782,5 @@ export interface TriggerContext {
 完整校验入口：先跑硬槽位逐字定位（有槽位时），再跑正则实体校验； 进阶问答开关开启时追加 §8.3 问答校验。 三者任一不通过即整体不通过。
 
 ```ts
-(original: string, summary: string, slots: { constraints: readonly string[]; artifacts: readonly string[]; todos: readonly string[]; } | null, config: CompressConfig): VerifyReport
+(original: string, summary: string, slots: HardSlots | null, config: CompressConfig): VerifyReport
 ```

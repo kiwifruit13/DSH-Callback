@@ -5,9 +5,14 @@
  * 1. 无 LLM / 钩子失败时的**抽取式兜底**：硬槽位直接摘抄原文行，
  *    天然满足「constraints、artifacts、todos 逐字定位」（`level-sinking` 硬槽位场景）；
  * 2. 硬槽位逐字校验，供 verify 阶段复用。
+ *
+ * 接线现状（P3-4）：两者都是**公共兜底工具**（自 index.ts 导出），宿主自定义
+ * compress/verify 钩子时可直接复用；框架主链路当前不经过它们 ——
+ * 降级链的 heuristic 级走 l3Coarsen（纯文本），verify 的槽位校验在 verify.ts 内实现。
  */
 
 import type { SummarySlots } from '../callbacks.js';
+import { DEFAULT_CONFIG, type CompressConfig } from '../config.js';
 import type { Message } from '../contract.js';
 import {
   KW_ARTIFACT,
@@ -34,8 +39,14 @@ function hasHardEntity(line: string): boolean {
 /**
  * 从原文抽取分槽位摘要。
  * 全部硬槽位取值都是原文的逐字行，narrative 也取原文行（兜底路径不引入改写）。
+ *
+ * @param config 可选配置覆盖；narrative 上限缺省取 `DEFAULT_CONFIG.l2NarrativeMaxLines`（P3-5）
  */
-export function extractSlots(msgs: readonly Message[]): SummarySlots {
+export function extractSlots(
+  msgs: readonly Message[],
+  config?: Pick<CompressConfig, 'l2NarrativeMaxLines'>,
+): SummarySlots {
+  const narrativeMax = config?.l2NarrativeMaxLines ?? DEFAULT_CONFIG.l2NarrativeMaxLines;
   const constraints: string[] = [];
   const artifacts: string[] = [];
   const todos: string[] = [];
@@ -57,7 +68,7 @@ export function extractSlots(msgs: readonly Message[]): SummarySlots {
         artifacts.push(trimmed);
         continue;
       }
-      if (narrative.length < 6) narrative.push(trimmed);
+      if (narrative.length < narrativeMax) narrative.push(trimmed);
     }
   }
 

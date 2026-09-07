@@ -103,6 +103,15 @@ export class CompressWorld extends World {
     rebuiltCount = null;
     sharedBlocks = null;
     sharedRehydrated = null;
+    /* default-facade 场景暂存 */
+    facadeCompressedAfterRound1 = null;
+    facadeRound2Results = null;
+    facadeFakeSlotValue = null;
+    /** R5-9 取消通道场景：外部取消信号与 compress 钩子是否收到已中止信号。 */
+    facadeSignal = null;
+    facadeHookSawAbort = null;
+    /** R5-9/R5-8 场景：压缩前的观测记录基线数量。 */
+    facadeBaselineObservations = null;
     /** 合并 configOverrides 与临时覆盖，产出本场景生效配置。 */
     makeConfig(overrides = {}) {
         this.config = resolveConfig({

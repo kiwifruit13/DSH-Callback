@@ -12,6 +12,7 @@
 import type { CompressConfig } from './config.js';
 import type { BoundaryType, ContextState, TriggerDecision } from './contract.js';
 import type { SimilaritySpace } from './gain.js';
+import { createVectorSpace, type VectorSpace } from './signals.js';
 import { matchAll, RE_TODO_DONE, RE_TODO_PENDING } from './patterns.js';
 
 /** 判定上下文。上次压缩的状态由调用方（编排层）维护。 */
@@ -33,6 +34,23 @@ export interface BoundaryHit {
 /** 等待任务边界（超线但未超等待上限，也未命中边界）已作为 `waiting-boundary` 并入 TriggerReason。 */
 
 /** 执行触发判定。 */
+
+/**
+ * 为 topic-shift 边界判定构建语料空间（P1-4 收口）：
+ * 把 state 中全部 user 角色消息登记进 TF-IDF 空间参与 IDF 统计。
+ *
+ * 空语料空间下任意文本的向量都是零向量，`cosine` 恒返回 0 —— 低于
+ * relevanceThreshold 就会对每一对相邻用户消息误报 topic-shift（P1-4 路径 A 的原始缺陷）。
+ * 编排器内置触发路径与 `defaultShouldCompress` **必须共用本 helper**，
+ * 杜绝「一处补了语料、另一处传空空间」的接线漂移再次发生。
+ */
+export function buildTopicShiftSpace(state: ContextState): VectorSpace {
+  const space = createVectorSpace();
+  for (const msg of state.msgs) {
+    if (msg.role === 'user') space.addDocument(msg.content);
+  }
+  return space;
+}
 
 const DELIVERY_KEYWORDS: readonly string[] = ['总结', '交付', '完成情况', 'summary', 'delivered', 'done with'];
 

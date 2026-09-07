@@ -12,13 +12,14 @@
  * | {@link CompressCallbacks.verify} | **视为不通过**，走降级链 | 记 verify_hook_error，不得放行 |
  * | {@link CompressCallbacks.onError} | 自身不得再抛 | 兜底出口 |
  *
- * 宿主只需实现 `compress` 即可跑通全流程，其余五个由默认实现承担。
+ * 宿主只需实现 `compress` 即可跑通全流程：`shouldCompress` 由编排器内置路径承担
+ * （不在 DEFAULT_CALLBACKS 中，P0-1/P0-2），其余四个钩子由 DEFAULT_CALLBACKS 提供。
  */
 
 import type { CompressConfig } from './config.js';
 import type {
   CompressLevel,
-  CompressMethod,
+
   ContextState,
   PinRecord,
   Segment,
@@ -59,6 +60,22 @@ export interface SummarySlots {
   readonly narrative: string;
 }
 
+/**
+ * 参与逐字校验的**硬槽位**取值集合（P0-3 引入的校验入参形状）。
+ *
+ * 只有 constraints / artifacts / todos 需要逐字定位，narrative 允许改写、不参与校验；
+ * 因此校验侧按此形状收参：`SummarySlots` 结构上是它的超集，可直接传入，
+ * 宿主自行构造三个数组（无 narrative）也合法。
+ */
+export interface HardSlots {
+  /** 用户硬约束，逐字摘抄。 */
+  readonly constraints: readonly string[];
+  /** 交付物路径与标识，逐字摘抄。 */
+  readonly artifacts: readonly string[];
+  /** 待办项，逐字摘抄。 */
+  readonly todos: readonly string[];
+}
+
 /** compress 钩子的入参。 */
 export interface CompressInput {
   /** 待压缩的**原文**文本。铁律一：永远从 L0 原文压缩，绝不传摘要。 */
@@ -90,6 +107,13 @@ export interface VerifyInput {
   readonly summary: string;
   /** 摘要所属级别。 */
   readonly level: CompressLevel;
+  /**
+   * L2 及以上的分槽位结果（P0-3）。
+   * 编排层把 compress 产出的槽位传到这里，默认校验链据此执行
+   * 「constraints / artifacts / todos 逐字定位」的硬槽位校验；
+   * 无槽位（L1 / 纯文本输出）时为 null 或缺省。
+   */
+  readonly slots?: HardSlots | null;
   readonly config: CompressConfig;
 }
 
@@ -103,7 +127,7 @@ export interface ErrorContext {
   readonly state: ContextState;
 }
 
-/** 六个可注入钩子。全部可选，缺省走默认实现。 */
+/** 六个可注入钩子。除 compress（必填）外全部可选：shouldCompress 缺省走编排器内置路径，其余缺省走 DEFAULT_CALLBACKS。 */
 export interface CompressCallbacks {
   /**
    * 触发判定。返回 boolean 或完整决策。
@@ -139,8 +163,3 @@ export interface CompressCallbacks {
   onError?(error: unknown, context: ErrorContext): void;
 }
 
-/** 降级链每一级的实现签名，供 {@link CompressCallbacks.compress} 之外的兜底级复用。 */
-export interface FallbackLevel {
-  readonly method: CompressMethod;
-  readonly run: (input: CompressInput, signal: AbortSignal) => Promise<CompressOutput> | CompressOutput;
-}

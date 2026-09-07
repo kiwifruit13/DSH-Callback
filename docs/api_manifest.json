@@ -1,7 +1,7 @@
 {
   "package": "dsh-callback",
   "entry": "src/index.ts",
-  "symbolCount": 117,
+  "symbolCount": 118,
   "symbols": [
     {
       "name": "Archive",
@@ -267,7 +267,7 @@
           "name": "retainedTexts",
           "type": "readonly string[]",
           "optional": false,
-          "doc": "已保留内容的文本（head 与 pin 内容），冗余度对照物。"
+          "doc": "已保留内容的文本，冗余度对照物。 当前编排器实现只传 pin 约束集文本（不含 head system prompt）—— 与此字段语义保持一致的调用方契约：传「视为已占用的内容」。"
         },
         {
           "name": "space",
@@ -444,7 +444,7 @@
       "name": "CompressCallbacks",
       "kind": "interface",
       "module": "src/callbacks.ts",
-      "doc": "六个可注入钩子。全部可选，缺省走默认实现。",
+      "doc": "六个可注入钩子。除 compress（必填）外全部可选：shouldCompress 缺省走编排器内置路径，其余缺省走 DEFAULT_CALLBACKS。",
       "signature": "export interface CompressCallbacks {",
       "members": [
         {
@@ -617,6 +617,12 @@
           "type": "number",
           "optional": false,
           "doc": "超长 stdout 保留的首部与尾部行数。"
+        },
+        {
+          "name": "l2NarrativeMaxLines",
+          "type": "number",
+          "optional": false,
+          "doc": "L2 兜底抽取的 narrative 最大行数（P3-5：不再硬编码于 levels/l2.ts）。"
         },
         {
           "name": "archive",
@@ -937,7 +943,7 @@
       "members": [
         {
           "name": "maybeCompress",
-          "type": "(state: ContextState) => Promise<ContextState>",
+          "type": "(state: ContextState, signal?: AbortSignal | undefined) => Promise<ContextState>",
           "optional": false,
           "doc": "对当前状态评估并执行（或跳过）一轮压缩。 返回值要么是全新的 ContextState（已提交，epoch+1）， 要么是原状态引用逐字节不变（未触发 / 中止 / 回滚）。"
         },
@@ -952,6 +958,12 @@
           "type": "CompressConfig",
           "optional": false,
           "doc": "生效配置（合并默认值后）。"
+        },
+        {
+          "name": "archive",
+          "type": "Archive",
+          "optional": false,
+          "doc": "归档门面（P1-8）：rehydrate / rebuildIndex 的公共入口。 与内部压缩共享同一实例与索引——凭压缩块的 archiveRef 随时取回 L0 原文， 进程重启后可 rebuildIndex() 从 JSONL 重建。"
         }
       ]
     },
@@ -1007,6 +1019,13 @@
       ]
     },
     {
+      "name": "cosineSimilarity",
+      "kind": "function",
+      "module": "src/signals.ts",
+      "doc": "共享余弦相似度（P2-2：TF-IDF 与 embedding 两种空间复用同一实现）。 点积只累积共同维度（min(len) 界限），维度不等的向量（如宿主 embed 模型维度漂移） 不会把 undefined 混入运算产生 NaN；任一范数为 0 时返回 0。",
+      "signature": "(a: readonly number[], b: readonly number[]): number"
+    },
+    {
       "name": "createArchive",
       "kind": "function",
       "module": "src/archive.ts",
@@ -1030,7 +1049,7 @@
           "name": "callbacks",
           "type": "CompressCallbacks",
           "optional": false,
-          "doc": "宿主回调。compress 为必填语义，其余钩子缺省走默认实现。"
+          "doc": "宿主回调。compress 为必填语义，shouldCompress 缺省走编排器内置路径，其余钩子缺省走 DEFAULT_CALLBACKS。"
         }
       ]
     },
@@ -1045,7 +1064,7 @@
       "name": "createEmbedderSpace",
       "kind": "function",
       "module": "src/gain.ts",
-      "doc": "embedding 模式的相似度空间：向量化由宿主提供，余弦本地计算。",
+      "doc": "embedding 模式的相似度空间：向量化由宿主提供，余弦本地计算（复用共享实现，P2-2）。",
       "signature": "(embed: Embedder): SimilaritySpace"
     },
     {
@@ -1066,7 +1085,7 @@
       "name": "dedupePins",
       "kind": "function",
       "module": "src/pins.ts",
-      "doc": "合并去重：同一条消息只保留一条 pin，reason 取优先级最高者。 局部 pin（带 span）优先于整条 pin，避免为图省事把整条长消息锁死。",
+      "doc": "合并去重（P2-1）。",
       "signature": "(hits: readonly PinRecord[]): PinRecord[]"
     },
     {
@@ -1074,8 +1093,8 @@
       "kind": "const",
       "module": "src/defaults.ts",
       "doc": "默认回调集。**compress 不在其中** —— 它是宿主唯一必须提供的钩子。",
-      "signature": "Omit<CompressCallbacks, 'compress'>",
-      "value": "{ shouldCompress: (state, config) => { const space = createVectorSpace(); // 门面不持有轮次历史：epoch 0（从未压缩过）视为不受频率下限约束， // 否则默认…"
+      "signature": "Omit<CompressCallbacks, 'compress' | 'shouldCompress'>",
+      "value": "{ selectSegment: defaultSelectSegment, onPreCompress: defaultOnPreCompress, verify: defaultVerify, onError: defaultOnErr…"
     },
     {
       "name": "DEFAULT_CONFIG",
@@ -1118,21 +1137,21 @@
       "name": "defaultShouldCompress",
       "kind": "function",
       "module": "src/defaults.ts",
-      "doc": "默认触发判定：双水位 + 迟滞 + 任务边界 + 频率下限。",
+      "doc": "默认触发判定：双水位 + 迟滞 + 任务边界 + 频率下限。 供宿主**显式**包装使用；编排器内置路径不经过它（见 DEFAULT_CALLBACKS 注释）。 ctx 的 turnsSinceLastCompress / justCompressed 必须由调用方真实维护， 传占位值会复现 minGapTurns 永久抑制 / 迟滞带失效的问题。",
       "signature": "(ctx: TriggerContext): TriggerDecision"
     },
     {
       "name": "defaultTokenCounter",
       "kind": "function",
       "module": "src/config.ts",
-      "doc": "内置 token 估算：中英文混排的保守近似。 中文按字符计，拉丁按空白与标点切分计，另加每条约 4 token 的消息开销。 宿主环境应提供真实 tokenizer 替换它。",
+      "doc": "内置 token 估算：中英文混排的保守近似。 中文按字符计（P2-9：字符类覆盖 CJK 统一表意区、假名区、CJK 符号标点区 U+3000-303F 与全角形式区 U+FF01-FF60 —— 中文标点不再粘进 latin 词导致计数系统性偏低）， 拉丁按空白与标点切分计。宿主环境应提供真实 tokenizer 替换它。",
       "signature": "(text: string): number"
     },
     {
       "name": "defaultVerify",
       "kind": "function",
       "module": "src/defaults.ts",
-      "doc": "默认实体校验：正则硬/软实体 + 硬槽位逐字定位。",
+      "doc": "默认实体校验：正则硬/软实体 + 硬槽位逐字定位（slots 由编排层经 VerifyInput 传入，P0-3）。",
       "signature": "(input: VerifyInput, config: CompressConfig): VerifyReport"
     },
     {
@@ -1225,28 +1244,7 @@
       "kind": "function",
       "module": "src/levels/l2.ts",
       "doc": "从原文抽取分槽位摘要。 全部硬槽位取值都是原文的逐字行，narrative 也取原文行（兜底路径不引入改写）。",
-      "signature": "(msgs: readonly Message[]): SummarySlots"
-    },
-    {
-      "name": "FallbackLevel",
-      "kind": "interface",
-      "module": "src/callbacks.ts",
-      "doc": "降级链每一级的实现签名，供 {@link CompressCallbacks.compress} 之外的兜底级复用。",
-      "signature": "export interface FallbackLevel {",
-      "members": [
-        {
-          "name": "method",
-          "type": "CompressMethod",
-          "optional": false,
-          "doc": ""
-        },
-        {
-          "name": "run",
-          "type": "(input: CompressInput, signal: AbortSignal) => CompressOutput | Promise<CompressOutput>",
-          "optional": false,
-          "doc": ""
-        }
-      ]
+      "signature": "(msgs: readonly Message[], config?: Pick<CompressConfig, \"l2NarrativeMaxLines\"> | undefined): SummarySlots"
     },
     {
       "name": "FallbackResult",
@@ -1304,6 +1302,33 @@
       "doc": "硬实体保留率要求。 它不是阈值而是契约本身：路径、URL、UUID、命令符号错一个字符， Agent 就会对错误目标执行破坏性操作，因此没有标定空间。",
       "signature": "1",
       "value": "1.0 as const"
+    },
+    {
+      "name": "HardSlots",
+      "kind": "interface",
+      "module": "src/callbacks.ts",
+      "doc": "参与逐字校验的**硬槽位**取值集合（P0-3 引入的校验入参形状）。",
+      "signature": "export interface HardSlots {",
+      "members": [
+        {
+          "name": "constraints",
+          "type": "readonly string[]",
+          "optional": false,
+          "doc": "用户硬约束，逐字摘抄。"
+        },
+        {
+          "name": "artifacts",
+          "type": "readonly string[]",
+          "optional": false,
+          "doc": "交付物路径与标识，逐字摘抄。"
+        },
+        {
+          "name": "todos",
+          "type": "readonly string[]",
+          "optional": false,
+          "doc": "待办项，逐字摘抄。"
+        }
+      ]
     },
     {
       "name": "HashFn",
@@ -1788,6 +1813,12 @@
           "doc": ""
         },
         {
+          "name": "triggerReason",
+          "type": "TriggerReason | undefined",
+          "optional": true,
+          "doc": "本轮触发原因（R5-8 可观测性扩展，可选以保持向后兼容）。 宿主布尔返回的 shouldCompress 如实标注为 'host-decision'，不伪造 task-boundary。"
+        },
+        {
           "name": "warnings",
           "type": "readonly string[]",
           "optional": false,
@@ -1804,7 +1835,7 @@
       "members": [
         {
           "name": "maybeCompress",
-          "type": "(state: ContextState) => Promise<ContextState>",
+          "type": "(state: ContextState, signal?: AbortSignal | undefined) => Promise<ContextState>",
           "optional": false,
           "doc": "对当前状态评估并（在触发条件满足时）执行一轮压缩。"
         },
@@ -1813,6 +1844,12 @@
           "type": "() => readonly ObservationRecord[]",
           "optional": false,
           "doc": "全部观测记录（按提交顺序）。"
+        },
+        {
+          "name": "archive",
+          "type": "Archive",
+          "optional": false,
+          "doc": "归档门面：宿主经此 rehydrate / rebuildIndex，与内部压缩共享同一实例与索引（P1-8）。"
         }
       ]
     },
@@ -1963,9 +2000,9 @@
       "name": "RE_HASH",
       "kind": "const",
       "module": "src/patterns.ts",
-      "doc": "commit hash 一类十六进制串（7–40 位）。",
+      "doc": "commit hash 一类十六进制串（7–40 位，大小写均可——git 短 hash 可能输出大写）。",
       "signature": "RegExp",
-      "value": "/\\b[0-9a-f]{7,40}\\b/"
+      "value": "/\\b[0-9a-fA-F]{7,40}\\b/"
     },
     {
       "name": "RE_POSIX_PATH",
@@ -2410,7 +2447,7 @@
       "kind": "type-alias",
       "module": "src/contract.ts",
       "doc": "触发决策原因。",
-      "signature": "| 'below-trigger'\n  /** 落在迟滞带内，防抖动。 */\n  | 'hysteresis-band'\n  /** 命中任务边界。 */\n  | 'task-boundary'\n  /** 无边界但超过等待上限，强制压缩。 */\n  | 'forced'\n  /** 距上次压缩的轮数小于频率下限。 */\n  | 'rate-limit'\n  /** 压缩后占用已落到目标线以下。 */\n  | 'post-compress-settled'\n  /** 找不到安全切点，放弃本轮。 */\n  | 'no-safe-cut'\n  /** 触发钩子抛异常，保守地不压缩。 */\n  | 'hook-error'\n  /** 占用超线但仍在等待任务边界，且未超等待上限。 */\n  | 'waiting-boundary'",
+      "signature": "| 'below-trigger'\n  /** 落在迟滞带内，防抖动。 */\n  | 'hysteresis-band'\n  /** 命中任务边界。 */\n  | 'task-boundary'\n  /** 无边界但超过等待上限，强制压缩。 */\n  | 'forced'\n  /** 距上次压缩的轮数小于频率下限。 */\n  | 'rate-limit'\n  /** 压缩后占用已落到目标线以下。 */\n  | 'post-compress-settled'\n  /** 找不到安全切点，放弃本轮。 */\n  | 'no-safe-cut'\n  /** 触发钩子抛异常，保守地不压缩。 */\n  | 'hook-error'\n  /** 占用超线但仍在等待任务边界，且未超等待上限。 */\n  | 'waiting-boundary'\n  /**\n   * 宿主以布尔形式返回 shouldCompress（R5-8）：库无法得知真实原因，\n   * 如实标注为宿主决策，不伪造 task-boundary（该原因要求携带 cutPointId）。\n   */\n  | 'host-decision'",
       "unionMembers": [
         {
           "value": "below-trigger",
@@ -2447,6 +2484,10 @@
         {
           "value": "waiting-boundary",
           "doc": "占用超线但仍在等待任务边界，且未超等待上限。"
+        },
+        {
+          "value": "host-decision",
+          "doc": "宿主以布尔形式返回 shouldCompress（R5-8）：库无法得知真实原因， 如实标注为宿主决策，不伪造 task-boundary（该原因要求携带 cutPointId）。"
         }
       ]
     },
@@ -2550,6 +2591,12 @@
           "doc": "摘要所属级别。"
         },
         {
+          "name": "slots",
+          "type": "HardSlots | null | undefined",
+          "optional": true,
+          "doc": "L2 及以上的分槽位结果（P0-3）。 编排层把 compress 产出的槽位传到这里，默认校验链据此执行 「constraints / artifacts / todos 逐字定位」的硬槽位校验； 无槽位（L1 / 纯文本输出）时为 null 或缺省。"
+        },
+        {
           "name": "config",
           "type": "CompressConfig",
           "optional": false,
@@ -2607,7 +2654,7 @@
       "kind": "function",
       "module": "src/verify.ts",
       "doc": "完整校验入口：先跑硬槽位逐字定位（有槽位时），再跑正则实体校验； 进阶问答开关开启时追加 §8.3 问答校验。 三者任一不通过即整体不通过。",
-      "signature": "(original: string, summary: string, slots: { constraints: readonly string[]; artifacts: readonly string[]; todos: readonly string[]; } | null, config: CompressConfig): VerifyReport"
+      "signature": "(original: string, summary: string, slots: HardSlots | null, config: CompressConfig): VerifyReport"
     },
     {
       "name": "WarningHook",

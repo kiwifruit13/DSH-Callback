@@ -24,16 +24,32 @@ async function withTimeout(timeoutMs, external, controller, fn) {
         external.removeEventListener('abort', onExternal);
     }
 }
-/** L2 及以上必须有槽位，且硬槽位取值非空字符串 —— 否则视为不符合 schema。 */
+/** L2 及以上必须有槽位，且槽位形状合法、硬槽位取值非空字符串 —— 否则视为不符合 schema。 */
 function isValidSchema(output, level) {
     if (output.text.trim().length === 0)
         return false;
     if (level < 2)
         return true;
-    return output.slots !== undefined;
+    return isValidSlots(output.slots);
 }
-/** 硬截断：从尾部往前累积行，直到预算用尽。 */
-function truncateToBudget(text, budget, config) {
+/**
+ * 槽位形状校验（P2-4）：constraints / artifacts / todos 必须是数组、narrative 必须是字符串。
+ * 类型层的 SummarySlots 形状在运行时同样要验证 —— 宿主返回 `slots: 42` 之类不能放行。
+ */
+function isValidSlots(slots) {
+    if (typeof slots !== 'object' || slots === null)
+        return false;
+    const candidate = slots;
+    return (Array.isArray(candidate.constraints) &&
+        Array.isArray(candidate.artifacts) &&
+        Array.isArray(candidate.todos) &&
+        typeof candidate.narrative === 'string');
+}
+/**
+ * 硬截断：从尾部往前累积行，直到预算用尽（R5-6 收敛为唯一实现，
+ * 编排器降级链的截断复用此处，消除双实现漂移）。
+ */
+export function truncateToBudget(text, budget, config) {
     const lines = text.split('\n');
     const kept = [];
     let used = 0;
@@ -85,11 +101,12 @@ export async function runFallbackChain(input, compress, config) {
             }
             catch (error) {
                 lastError = error;
-                // 组合信号已 abort（超时或外部取消）是预期内的 llm 失败 → 继续降级；
+                // 组合信号已 abort（超时或外部取消）是预期内的 llm 失败 → 立即跳出重试、进入降级链（P2-3）；
                 // 钩子在未 abort 时主动抛异常属于宿主侧崩溃，不可静默降级 → 立即放弃本轮（§9.2 原子性）
                 if (controller.signal.aborted) {
                     warnings.push('llm_aborted');
                     config.onWarning?.('llm_hook_error', { key: idempotencyKeyOf(input.key), error: String(error) });
+                    break;
                 }
                 else {
                     hookThrew = true;
@@ -110,6 +127,10 @@ export async function runFallbackChain(input, compress, config) {
     // —— 第 2 级：heuristic（规则抽取，保留首尾与含实体句）——
     try {
         const heuristicText = l3Coarsen(input.text, config);
+        if (heuristicText.trim().length === 0) {
+            // P2-5：空文本与 truncate 级对称防护 —— 空 content 的压缩块消息会被主流 Chat API 拒绝
+            throw new Error('heuristic 输出为空');
+        }
         const heuristicTokens = config.countTokens(heuristicText);
         if (heuristicTokens > input.budget) {
             warnings.push('heuristic_over_budget');

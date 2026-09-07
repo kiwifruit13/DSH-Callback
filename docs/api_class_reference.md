@@ -18,7 +18,7 @@
 | `BudgetAssignment` | 接口 | `src/contract.ts` | 单个段的预算分配结果。 |
 | `CacheImpact` | 接口 | `src/contract.ts` | prompt cache 影响。稳定前缀是避免 cache 全 miss 的关键（§7.2）。 |
 | `CommitAssertFailed` | 类 | `src/contract.ts` | 提交前断言失败。整体回滚，告警必须指明失败的断言项。 |
-| `CompressCallbacks` | 接口 | `src/callbacks.ts` | 六个可注入钩子。全部可选，缺省走默认实现。 |
+| `CompressCallbacks` | 接口 | `src/callbacks.ts` | 六个可注入钩子。除 compress（必填）外全部可选：shouldCompress 缺省走编排器内置路径，其余缺省走 DEFAULT_CALLBACKS。 |
 | `CompressConfig` | 接口 | `src/config.ts` | 压缩配置。全部阈值集中于此，源码其余位置不得出现待标定数字。 |
 | `CompressedBlock` | 接口 | `src/contract.ts` | 压缩产物。 |
 | `CompressError` | 类 | `src/contract.ts` | 压缩错误基类。 |
@@ -30,33 +30,34 @@
 | `ConfigError` | 类 | `src/config.ts` | 配置校验错误。 |
 | `ContextCompressor` | 接口 | `src/api.ts` | 压缩器实例。 |
 | `ContextState` | 接口 | `src/contract.ts` | 上下文状态。 `msgs` 以不可变数组持有，压缩采用「构造 next_msgs → 断言 → 整体替换」的提交方式， 中途失败则引用与内容逐字节保持原样（§9.2 原子性）。 |
+| `cosineSimilarity` | 函数 | `src/signals.ts` | 共享余弦相似度（P2-2：TF-IDF 与 embedding 两种空间复用同一实现）。 点积只累积共同维度（min(len) 界限），维度不等的向量（如宿主 embed 模型维度漂移） 不会把 undefined 混入运算产生 NaN；任一范数为 0 时返回 0。 |
 | `createArchive` | 函数 | `src/archive.ts` | 创建归档门面。 `sink` 为 null 表示无归档能力：此时 `archive()` 恒返回 null、`isAvailable()` 恒为 false。 |
 | `CreateCompressorOptions` | 接口 | `src/api.ts` |  |
 | `createContextCompressor` | 函数 | `src/api.ts` | 创建压缩器。非法配置在此即刻失败，不带入压缩流程。 |
-| `createEmbedderSpace` | 函数 | `src/gain.ts` | embedding 模式的相似度空间：向量化由宿主提供，余弦本地计算。 |
+| `createEmbedderSpace` | 函数 | `src/gain.ts` | embedding 模式的相似度空间：向量化由宿主提供，余弦本地计算（复用共享实现，P2-2）。 |
 | `createOrchestrator` | 函数 | `src/orchestrator.ts` |  |
 | `createVectorSpace` | 函数 | `src/signals.ts` |  |
-| `dedupePins` | 函数 | `src/pins.ts` | 合并去重：同一条消息只保留一条 pin，reason 取优先级最高者。 局部 pin（带 span）优先于整条 pin，避免为图省事把整条长消息锁死。 |
+| `dedupePins` | 函数 | `src/pins.ts` | 合并去重（P2-1）。 |
 | `DEFAULT_CALLBACKS` | 常量 | `src/defaults.ts` | 默认回调集。**compress 不在其中** —— 它是宿主唯一必须提供的钩子。 |
 | `DEFAULT_CONFIG` | 常量 | `src/config.ts` | 保守占位默认值。规划 §13 实测标定后替换。 |
 | `defaultHash` | 常量 | `src/archive.ts` | 默认哈希：SHA-256 十六进制。 |
 | `defaultOnError` | 函数 | `src/defaults.ts` | 默认错误出口：什么都不做。宿主应提供自己的实现以接入日志/监控。 |
 | `defaultOnPreCompress` | 函数 | `src/defaults.ts` | 默认 pin 识别：静态白名单 + 铁律三强制 pin，按优先级去重。 |
 | `defaultSelectSegment` | 函数 | `src/defaults.ts` | 默认切割：按 block 边界切中部，无安全切点返回空数组。 |
-| `defaultShouldCompress` | 函数 | `src/defaults.ts` | 默认触发判定：双水位 + 迟滞 + 任务边界 + 频率下限。 |
-| `defaultTokenCounter` | 函数 | `src/config.ts` | 内置 token 估算：中英文混排的保守近似。 中文按字符计，拉丁按空白与标点切分计，另加每条约 4 token 的消息开销。 宿主环境应提供真实 tokenizer 替换它。 |
-| `defaultVerify` | 函数 | `src/defaults.ts` | 默认实体校验：正则硬/软实体 + 硬槽位逐字定位。 |
+| `defaultShouldCompress` | 函数 | `src/defaults.ts` | 默认触发判定：双水位 + 迟滞 + 任务边界 + 频率下限。 供宿主**显式**包装使用；编排器内置路径不经过它（见 DEFAULT_CALLBACKS 注释）。 ctx 的 turnsSinceLastCompress / justCompressed 必须由调用方真实维护， 传占位值会复现 minGapTurns 永久抑制 / 迟滞带失效的问题。 |
+| `defaultTokenCounter` | 函数 | `src/config.ts` | 内置 token 估算：中英文混排的保守近似。 中文按字符计（P2-9：字符类覆盖 CJK 统一表意区、假名区、CJK 符号标点区 U+3000-303F 与全角形式区 U+FF01-FF60 —— 中文标点不再粘进 latin 词导致计数系统性偏低）， 拉丁按空白与标点切分计。宿主环境应提供真实 tokenizer 替换它。 |
+| `defaultVerify` | 函数 | `src/defaults.ts` | 默认实体校验：正则硬/软实体 + 硬槽位逐字定位（slots 由编排层经 VerifyInput 传入，P0-3）。 |
 | `detectBoundaries` | 函数 | `src/trigger.ts` | 识别任务边界。四类信号的实现都是**确定性**的文本规则： - todo-transition：待办由 pending 翻转为 completed 的那条消息； - tool-seq-end：工具调用序列终止后第一条纯文本消息； - delivery-summary：助手输出交付总结后的下一条用户消息； - topic-shift：相邻两条用户消息相关性低于阈值（需要 space，缺省跳过该类）。 |
 | `Embedder` | 类型别名 | `src/config.ts` | 文本向量化钩子。开启 embedding 时由宿主提供；缺省走内置 TF-IDF。 |
 | `EntityCategory` | 类型别名 | `src/contract.ts` | 受校验的实体类别。 |
 | `ErrorContext` | 接口 | `src/callbacks.ts` | 错误上下文。 |
 | `extractHardEntities` | 函数 | `src/patterns.ts` | 提取文本中某一类硬实体。uuid-or-hash 同时匹配 UUID 与十六进制串。 |
 | `extractSlots` | 函数 | `src/levels/l2.ts` | 从原文抽取分槽位摘要。 全部硬槽位取值都是原文的逐字行，narrative 也取原文行（兜底路径不引入改写）。 |
-| `FallbackLevel` | 接口 | `src/callbacks.ts` | 降级链每一级的实现签名，供 {@link CompressCallbacks.compress} 之外的兜底级复用。 |
 | `FallbackResult` | 接口 | `src/fallback.ts` |  |
 | `HARD_ENTITY_CATEGORIES` | 常量 | `src/contract.ts` | 硬实体类别集合。这些类别的保留率要求恒为 1.0。 |
 | `HARD_ENTITY_PATTERNS` | 常量 | `src/patterns.ts` | 硬实体类别 → 正则。 |
 | `HARD_ENTITY_RETAIN_REQUIRED` | 常量 | `src/contract.ts` | 硬实体保留率要求。 它不是阈值而是契约本身：路径、URL、UUID、命令符号错一个字符， Agent 就会对错误目标执行破坏性操作，因此没有标定空间。 |
+| `HardSlots` | 接口 | `src/callbacks.ts` | 参与逐字校验的**硬槽位**取值集合（P0-3 引入的校验入参形状）。 |
 | `HashFn` | 类型别名 | `src/archive.ts` | 哈希函数。宿主可注入（例如浏览器环境替换 node:crypto）。 |
 | `hashMessages` | 函数 | `src/archive.ts` | 一批原文的 source_hash。 |
 | `HookError` | 类 | `src/contract.ts` | 用户钩子抛异常。携带钩子名，便于区分 shouldCompress / onPreCompress / selectSegment 等不同处置方向。 |
@@ -87,7 +88,7 @@
 | `PinRecord` | 接口 | `src/contract.ts` | 一条不可压缩区记录。 |
 | `PinResolveResult` | 接口 | `src/pins.ts` | pin 解析结果。 |
 | `RE_COMMAND` | 常量 | `src/patterns.ts` | 反引号包裹的命令与符号。 |
-| `RE_HASH` | 常量 | `src/patterns.ts` | commit hash 一类十六进制串（7–40 位）。 |
+| `RE_HASH` | 常量 | `src/patterns.ts` | commit hash 一类十六进制串（7–40 位，大小写均可——git 短 hash 可能输出大写）。 |
 | `RE_POSIX_PATH` | 常量 | `src/patterns.ts` | POSIX 路径：至少两级，避免把单个 `/usr` 或除法算式误判为路径。 |
 | `RE_TODO_DONE` | 常量 | `src/patterns.ts` | 已完成待办：`- [x]`、`DONE:`、`已完成`。 |
 | `RE_TODO_PENDING` | 常量 | `src/patterns.ts` | 未完成待办：`- [ ]`、`TODO:`、`待办：`。 |

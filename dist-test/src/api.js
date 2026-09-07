@@ -18,13 +18,14 @@ export function createContextCompressor(options) {
     const callbacks = { ...DEFAULT_CALLBACKS, ...options.callbacks };
     const orchestrator = createOrchestrator({ config, callbacks });
     return {
-        maybeCompress(state) {
-            return orchestrator.maybeCompress(state);
+        maybeCompress(state, signal) {
+            return orchestrator.maybeCompress(state, signal);
         },
         observations() {
             return orchestrator.observations();
         },
         config,
+        archive: orchestrator.archive,
     };
 }
 //# sourceMappingURL=api.js.map

@@ -33,9 +33,6 @@ function evaluateTrigger(this: CompressWorld): void {
     space,
   );
   this.decision = decision;
-  if (decision.reason === 'rate-limit') {
-    this.metrics['compress_deferred_count'] = (this.metrics['compress_deferred_count'] ?? 0) + 1;
-  }
   this.decisionLog = [...(this.decisionLog ?? []), decision];
 }
 
@@ -252,10 +249,6 @@ Given('距上次成功压缩的轮数小于配置的频率下限轮数', functio
 
 Then('决策原因记为 rate-limit', function (this: CompressWorld) {
   assert.equal(this.decision?.reason, 'rate-limit');
-});
-
-Then('指标 compress_deferred_count 增加 1', function (this: CompressWorld) {
-  assert.ok((this.metrics['compress_deferred_count'] ?? 0) >= 1);
 });
 
 /* ---- Scenario: 稳定前缀在压缩前后逐字节不变 ---- */

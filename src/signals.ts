@@ -86,6 +86,23 @@ export interface VectorSpace {
   documentCount(): number;
 }
 
+/**
+ * 共享余弦相似度（P2-2：TF-IDF 与 embedding 两种空间复用同一实现）。
+ * 点积只累积共同维度（min(len) 界限），维度不等的向量（如宿主 embed 模型维度漂移）
+ * 不会把 undefined 混入运算产生 NaN；任一范数为 0 时返回 0。
+ */
+export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
+  const len = Math.min(a.length, b.length);
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) normA += a[i]! * a[i]!;
+  for (let i = 0; i < b.length; i++) normB += b[i]! * b[i]!;
+  for (let i = 0; i < len; i++) dot += a[i]! * b[i]!;
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
 export function createVectorSpace(): VectorSpace {
   const termIndex = new Map<string, number>();
   const docFreq = new Map<string, number>();
@@ -124,15 +141,7 @@ export function createVectorSpace(): VectorSpace {
     },
 
     cosine(a: readonly number[], b: readonly number[]): number {
-      const len = Math.min(a.length, b.length);
-      let dot = 0;
-      let normA = 0;
-      let normB = 0;
-      for (let i = 0; i < a.length; i++) normA += a[i]! * a[i]!;
-      for (let i = 0; i < b.length; i++) normB += b[i]! * b[i]!;
-      for (let i = 0; i < len; i++) dot += a[i]! * b[i]!;
-      if (normA === 0 || normB === 0) return 0;
-      return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+      return cosineSimilarity(a, b);
     },
 
     vocabularySize(): number {

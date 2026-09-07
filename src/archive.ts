@@ -90,6 +90,9 @@ export class JsonlArchiveSink implements ArchiveSink {
   }
 
   async append(record: Omit<ArchiveRecord, 'offset'>): Promise<number> {
+    // 进程内并发安全（P2-6 复查结论）：statSync 与 appendFileSync 之间无 await 点，
+    // Node 单线程事件循环下天然原子。多进程同时写同一文件需要宿主侧外部互斥，
+    // 这属于 sink 部署形态的责任，不在本抽象内解决。
     this.ensureDir();
     const offset = fs.existsSync(this.filePath) ? fs.statSync(this.filePath).size : 0;
     const line = `${JSON.stringify({ ...record, offset })}\n`;
@@ -179,12 +182,20 @@ export function createArchive(sink: ArchiveSink | null, hash: HashFn = defaultHa
     return byRef.size;
   };
 
-  // 首次使用时惰性重建：归档模块初始化即扫描 JSONL 建立 ref → 偏移索引
-  let initialized = false;
-  const ensureInit = async (): Promise<void> => {
-    if (initialized) return;
-    initialized = true;
-    await rebuildIndex();
+  // 首次使用时惰性重建：归档模块初始化即扫描 JSONL 建立 ref → 偏移索引。
+  // P2-6：以 promise 缓存实现并发安全 —— 并发首调共享同一次重建，
+  // 不会在索引建完前用空索引去重导致冗余行；重建失败时重置，允许重试。
+  let initPromise: Promise<void> | null = null;
+  const ensureInit = (): Promise<void> => {
+    if (initPromise === null) {
+      initPromise = rebuildIndex()
+        .then(() => undefined)
+        .catch((error) => {
+          initPromise = null;
+          throw error;
+        });
+    }
+    return initPromise;
   };
 
   return {

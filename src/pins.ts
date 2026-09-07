@@ -104,6 +104,8 @@ export function identifyStaticPins(state: ContextState): PinRecord[] {
     }
 
     // 命令与符号：整行保护
+    // 注（P3-8）：PinReason 枚举没有命令/URL 专属取值，此处复用 deliverable-path，
+    // 语义为「不可丢失的硬实体行」；枚举扩展属破坏性变更，待契约确认项裁决
     const commands = matchAll(content, RE_COMMAND);
     if (commands.length > 0) {
       hits.push(pinOf(msg, 'deliverable-path', lineSpanOf(content, commands[0]!.start)));
@@ -172,23 +174,34 @@ function priorityOf(reason: PinReason): number {
 }
 
 /**
- * 合并去重：同一条消息只保留一条 pin，reason 取优先级最高者。
- * 局部 pin（带 span）优先于整条 pin，避免为图省事把整条长消息锁死。
+ * 合并去重（P2-1）。
+ *
+ * 契约「同一内容命中多个识别信号时只产生一条 pin」的粒度是**内容**而非消息：
+ * 同一消息的不同 span 是不同内容区间，各自保留（多条待办行、多路径不再丢保护）。
+ * 规则：
+ * - 去重键 = msgId + span（整条 pin 键为 `msgId|whole`）；
+ * - 同键时 reason 取优先级更高者；
+ * - 同一消息同时存在局部 pin 与整条 pin 时保留局部 —— 整条消息的保护由
+ *   「被 pin 消息所在 block 整体退出压缩候选」兜底，整条 pin 只是断言冗余。
  */
 export function dedupePins(hits: readonly PinRecord[]): PinRecord[] {
   const best = new Map<string, PinRecord>();
+  const keyOf = (pin: PinRecord): string =>
+    pin.span === undefined ? `${pin.msgId}|whole` : `${pin.msgId}|${pin.span[0]}-${pin.span[1]}`;
   for (const hit of hits) {
-    const existing = best.get(hit.msgId);
+    const key = keyOf(hit);
+    const existing = best.get(key);
     if (existing === undefined) {
-      best.set(hit.msgId, hit);
+      best.set(key, hit);
       continue;
     }
-    const better =
-      priorityOf(hit.reason) < priorityOf(existing.reason) ||
-      (priorityOf(hit.reason) === priorityOf(existing.reason) && hit.span !== undefined && existing.span === undefined);
-    if (better) best.set(hit.msgId, hit);
+    if (priorityOf(hit.reason) < priorityOf(existing.reason)) best.set(key, hit);
   }
-  return [...best.values()];
+  const hasSpan = new Set<string>();
+  for (const pin of best.values()) {
+    if (pin.span !== undefined) hasSpan.add(pin.msgId);
+  }
+  return [...best.values()].filter((pin) => pin.span !== undefined || !hasSpan.has(pin.msgId));
 }
 
 /**

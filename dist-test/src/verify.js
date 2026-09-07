@@ -8,7 +8,8 @@
  * - 原文不含某类实体时，该类保留率记 **1.0** 而非 0 或空值 —— 不因「未匹配到实体」被误判为信息丢失；
  * - 软实体低于配置阈值时按配置处置（warn 放行 / reject 拦下），处置结果写入报告；
  * - 本模块自身不抛异常；校验**钩子**的异常由编排层包装为「不通过 + 走降级链」；
- * - 硬槽位逐字校验在 `levels/l2.ts` 的 verifyHardSlots。
+ * - 硬槽位逐字校验由 {@link verifySummary} 自身实现；`levels/l2.ts` 的 verifyHardSlots
+ *   是等价的公共兜底工具，主链路不经过它（P3-4）。
  */
 import { HARD_ENTITY_CATEGORIES, } from './contract.js';
 import { extractHardEntities, matchAll, SOFT_ENTITY_PATTERNS } from './patterns.js';
@@ -85,14 +86,23 @@ export function generateSlotQuestions(slots) {
 }
 /**
  * §8.3 进阶事实问答校验。`config.advancedVerifyEnabled` 为 true 时由
- * {@link verifySummary} 自动调用；任一题答案无法在原文中逐字定位即判定关键信息丢失。
+ * {@link verifySummary} 自动调用；槽位取值**逐值**在原文中定位（P2-8：
+ * 不校验 join(' ') 后的整串 —— 多个取值在原文中几乎不可能相邻出现，整串校验会恒误报）。
+ * qa.answer 的 join 形式仅用于报告展示。
  */
 export function advancedVerify(original, slots) {
     const questions = generateSlotQuestions(slots);
     const missing = [];
-    for (const qa of questions) {
-        if (!original.includes(qa.answer)) {
-            missing.push(`qa[${qa.category}]: ${qa.answer}`);
+    const byCategory = [
+        ['constraints', slots.constraints],
+        ['artifacts', slots.artifacts],
+        ['todos', slots.todos],
+    ];
+    for (const [category, values] of byCategory) {
+        for (const value of values) {
+            if (!original.includes(value)) {
+                missing.push(`qa[${category}]: ${value}`);
+            }
         }
     }
     return { passed: missing.length === 0, missing, questions };
@@ -101,6 +111,9 @@ export function advancedVerify(original, slots) {
  * 完整校验入口：先跑硬槽位逐字定位（有槽位时），再跑正则实体校验；
  * 进阶问答开关开启时追加 §8.3 问答校验。
  * 三者任一不通过即整体不通过。
+ *
+ * 注：硬槽位逐字定位在此处直接实现（P3-4）——`levels/l2.ts` 的 verifyHardSlots
+ * 是等价的公共兜底工具，主链路不经过它。
  */
 export function verifySummary(original, summary, slots, config) {
     // §8 L2 分槽位摘要：硬实体允许落在硬槽位内（逐字摘抄），

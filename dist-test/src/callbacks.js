@@ -12,7 +12,8 @@
  * | {@link CompressCallbacks.verify} | **视为不通过**，走降级链 | 记 verify_hook_error，不得放行 |
  * | {@link CompressCallbacks.onError} | 自身不得再抛 | 兜底出口 |
  *
- * 宿主只需实现 `compress` 即可跑通全流程，其余五个由默认实现承担。
+ * 宿主只需实现 `compress` 即可跑通全流程：`shouldCompress` 由编排器内置路径承担
+ * （不在 DEFAULT_CALLBACKS 中，P0-1/P0-2），其余四个钩子由 DEFAULT_CALLBACKS 提供。
  */
 /** 把幂等键序列化为稳定字符串，用作缓存键。 */
 export function idempotencyKeyOf(key) {

@@ -33,6 +33,7 @@ export const DEFAULT_CONFIG = {
     tokenEstimateTolerance: 0.05,
     l1OversizeLines: 40,
     l1EdgeKeepLines: 5,
+    l2NarrativeMaxLines: 6,
     archive: null,
     countTokens: defaultTokenCounter,
     embed: null,
@@ -41,15 +42,17 @@ export const DEFAULT_CONFIG = {
 };
 /**
  * 内置 token 估算：中英文混排的保守近似。
- * 中文按字符计，拉丁按空白与标点切分计，另加每条约 4 token 的消息开销。
- * 宿主环境应提供真实 tokenizer 替换它。
+ * 中文按字符计（P2-9：字符类覆盖 CJK 统一表意区、假名区、CJK 符号标点区 U+3000-303F
+ * 与全角形式区 U+FF01-FF60 —— 中文标点不再粘进 latin 词导致计数系统性偏低），
+ * 拉丁按空白与标点切分计。宿主环境应提供真实 tokenizer 替换它。
  */
 export function defaultTokenCounter(text) {
     if (text.length === 0)
         return 0;
-    const cjk = (text.match(/[㐀-䶿一-鿿぀-ヿ]/g) ?? []).length;
+    const cjkPattern = /[㐀-䶿一-鿿぀-ヿ\u3000-\u303f\uff01-\uff60]/g;
+    const cjk = (text.match(cjkPattern) ?? []).length;
     const latin = text
-        .replace(/[㐀-䶿一-鿿぀-ヿ]/g, ' ')
+        .replace(cjkPattern, ' ')
         .split(/[\s,.;:!?()[\]{}"'`\/\\|<>+\-*=~@#$%^&_]+/)
         .filter((t) => t.length > 0).length;
     return cjk + latin;
@@ -85,7 +88,13 @@ export function resolveConfig(overrides = {}) {
     assertRange('tokenEstimateTolerance', cfg.tokenEstimateTolerance, 0, 1);
     assertRange('l1OversizeLines', cfg.l1OversizeLines, 2, Number.MAX_SAFE_INTEGER);
     assertRange('l1EdgeKeepLines', cfg.l1EdgeKeepLines, 1, cfg.l1OversizeLines);
+    assertRange('l2NarrativeMaxLines', cfg.l2NarrativeMaxLines, 1, Number.MAX_SAFE_INTEGER);
     assertRange('relevanceThreshold', cfg.relevanceThreshold, 0, 1);
+    // P3-9：maxLevel 是枚举而非普通数值，非法值应在进入流程前失败；
+    // 下界 1 —— maxLevel=0 意味着任何压缩都不允许，与库的存在前提矛盾。
+    if (cfg.maxLevel !== 1 && cfg.maxLevel !== 2 && cfg.maxLevel !== 3 && cfg.maxLevel !== 4) {
+        throw new ConfigError(`maxLevel(${cfg.maxLevel}) 必须取 1-4`);
+    }
     if (cfg.embeddingEnabled && cfg.embed === null) {
         throw new ConfigError('embeddingEnabled 为 true 时必须提供 embed 向量化器');
     }
