@@ -1,0 +1,39 @@
+{
+  "name": "dsh-callback",
+  "version": "0.1.0",
+  "description": "渐进式上下文压缩库：契约先行的 Agent 上下文管理者，六钩子回调架构，可嵌入任意 Agent 运行时",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc -p tsconfig.test.json && node scripts/run-tests.mjs --profile default",
+    "test:invariant": "tsc -p tsconfig.test.json && node scripts/run-tests.mjs --profile invariant-only",
+    "test:wip": "tsc -p tsconfig.test.json && node scripts/run-tests.mjs --profile wip",
+    "api:docs": "node --import tsx scripts/generate-api-docs.ts",
+    "api:check": "node --import tsx scripts/generate-api-docs.ts --check",
+    "api:contract": "node --import tsx scripts/check-api-contract.ts"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@cucumber/cucumber": "^11.2.0",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

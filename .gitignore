@@ -1,0 +1,9 @@
+node_modules/
+dist/
+reports/
+*.tsbuildinfo
+__pycache__/
+.DS_Store
+
+# 本地工具记忆与工作日志（不纳入版本控制）
+.workbuddy/

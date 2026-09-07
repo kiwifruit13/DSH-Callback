@@ -1,0 +1,225 @@
+{
+  "errors": [],
+  "generator": "generate_api_docs.py v1.0.0",
+  "modules_scanned": [
+    "demo_pkg",
+    "demo_pkg.aliases",
+    "demo_pkg.core",
+    "demo_pkg.infra"
+  ],
+  "package": "demo_pkg",
+  "stats": {
+    "by_kind": {
+      "class": 1,
+      "constant": 2,
+      "dataclass": 2,
+      "enum": 2,
+      "function": 2
+    },
+    "docstring_coverage_pct": 77.8,
+    "total_symbols": 9,
+    "with_docstring": 7
+  },
+  "symbols": [
+    {
+      "doc": "",
+      "exported_by": [
+        "demo_pkg",
+        "demo_pkg.core"
+      ],
+      "kind": "constant",
+      "module": "demo_pkg",
+      "name": "DEFAULT_BUCKET",
+      "type": "str",
+      "value": "'default'"
+    },
+    {
+      "doc": "",
+      "exported_by": [
+        "demo_pkg",
+        "demo_pkg.infra"
+      ],
+      "kind": "constant",
+      "module": "demo_pkg",
+      "name": "MAX_RETRIES",
+      "type": "int",
+      "value": "10"
+    },
+    {
+      "doc": "用户授权状态，只有 GRANTED 才允许写入记忆。",
+      "exported_by": [
+        "demo_pkg",
+        "demo_pkg.aliases",
+        "demo_pkg.core"
+      ],
+      "kind": "enum",
+      "members": [
+        {
+          "name": "GRANTED",
+          "value": "'granted'"
+        },
+        {
+          "name": "DENIED",
+          "value": "'denied'"
+        },
+        {
+          "name": "PENDING",
+          "value": "'pending'"
+        }
+      ],
+      "module": "demo_pkg.core",
+      "name": "ConsentStatus"
+    },
+    {
+      "attributes": [
+        {
+          "name": "bucket_limit",
+          "value": "64"
+        }
+      ],
+      "constructor": "MemoryStore(bucket: str = 'default')",
+      "doc": "记忆存储器，按桶隔离不同类型的内容。",
+      "exported_by": [
+        "demo_pkg",
+        "demo_pkg.core"
+      ],
+      "fields": [],
+      "kind": "class",
+      "methods": [
+        {
+          "doc": "按键读取一条记忆，不存在时返回 None。",
+          "name": "recall",
+          "signature": "recall(key: str) -> str | None"
+        },
+        {
+          "doc": "写入一条记忆；授权状态非 GRANTED 时拒绝写入并返回 False。",
+          "name": "store",
+          "signature": "store(key: str, value: str, status: ConsentStatus = ConsentStatus.GRANTED) -> bool"
+        }
+      ],
+      "module": "demo_pkg.core",
+      "name": "MemoryStore",
+      "properties": [
+        {
+          "doc": "当前桶名（只读）。",
+          "name": "bucket",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "attributes": [
+        {
+          "name": "user_id",
+          "value": "''"
+        }
+      ],
+      "constructor": "",
+      "doc": "一次会话的上下文，贯穿整个处理流程。",
+      "exported_by": [
+        "demo_pkg",
+        "demo_pkg.core"
+      ],
+      "fields": [
+        {
+          "default": "（必填）",
+          "name": "session_id",
+          "type": "str"
+        },
+        {
+          "default": "''",
+          "name": "user_id",
+          "type": "str"
+        },
+        {
+          "default": "<factory>",
+          "name": "tags",
+          "type": "list[str]"
+        }
+      ],
+      "kind": "dataclass",
+      "methods": [],
+      "module": "demo_pkg.core",
+      "name": "SessionContext",
+      "properties": []
+    },
+    {
+      "doc": "记忆存储的顶层便捷入口。\n\nstatus 同时接受 ConsentStatus 枚举或其字符串值（如 \"granted\"），\n字符串会被自动转换为枚举，避免调用方因类型不匹配而崩溃。",
+      "exported_by": [
+        "demo_pkg",
+        "demo_pkg.core"
+      ],
+      "kind": "function",
+      "module": "demo_pkg.core",
+      "name": "store_memory",
+      "signature": "store_memory(store: MemoryStore, key: str, value: str, status: ConsentStatus | str = ConsentStatus.GRANTED) -> bool"
+    },
+    {
+      "doc": "重试策略。",
+      "exported_by": [
+        "demo_pkg",
+        "demo_pkg.infra"
+      ],
+      "kind": "enum",
+      "members": [
+        {
+          "name": "FIXED",
+          "value": "'fixed'"
+        },
+        {
+          "name": "EXPONENTIAL",
+          "value": "'exponential'"
+        }
+      ],
+      "module": "demo_pkg.infra",
+      "name": "RetryPolicy"
+    },
+    {
+      "attributes": [
+        {
+          "name": "retries",
+          "value": "3"
+        },
+        {
+          "name": "timeout",
+          "value": "5.0"
+        }
+      ],
+      "constructor": "",
+      "doc": "超时与重试配置。",
+      "exported_by": [
+        "demo_pkg",
+        "demo_pkg.infra"
+      ],
+      "fields": [
+        {
+          "default": "5.0",
+          "name": "timeout",
+          "type": "float"
+        },
+        {
+          "default": "3",
+          "name": "retries",
+          "type": "int"
+        }
+      ],
+      "kind": "dataclass",
+      "methods": [],
+      "module": "demo_pkg.infra",
+      "name": "TimeoutConfig",
+      "properties": []
+    },
+    {
+      "doc": "按指定策略执行 func，重试耗尽后返回 None。\n\nFIXED 策略每次等待固定 10ms；EXPONENTIAL 策略按 2 的幂次递增等待。",
+      "exported_by": [
+        "demo_pkg",
+        "demo_pkg.infra"
+      ],
+      "kind": "function",
+      "module": "demo_pkg.infra",
+      "name": "run_with_retry",
+      "signature": "run_with_retry(func: Callable[[], object], config: TimeoutConfig | None = None, policy: RetryPolicy = RetryPolicy.FIXED) -> object"
+    }
+  ],
+  "warnings": []
+}

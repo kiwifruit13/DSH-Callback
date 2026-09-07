@@ -1,0 +1,26 @@
+{
+  "default": {
+    "description": "全量场景。提交前完整回归。",
+    "paths": ["features/**/*.feature"],
+    "import": ["dist-test/features/support/**/*.js"],
+    "format": ["progress-bar", "html:reports/cucumber-report.html", "json:reports/cucumber-report.json"],
+    "tags": "not @wip",
+    "publishQuiet": true
+  },
+  "invariant-only": {
+    "description": "仅铁律与 API 400 防线：tool-block-integrity、pin-protection、level-sinking、atomicity-idempotency。改动 src/blocks.ts、src/pins.ts、src/levels/*、src/orchestrator.ts 时必跑。",
+    "paths": ["features/**/*.feature"],
+    "import": ["dist-test/features/support/**/*.js"],
+    "format": ["progress"],
+    "tags": "@invariant and not @wip",
+    "publishQuiet": true
+  },
+  "wip": {
+    "description": "开发中场景，允许 pending。",
+    "paths": ["features/**/*.feature"],
+    "import": ["dist-test/features/support/**/*.js"],
+    "format": ["progress"],
+    "tags": "@wip",
+    "publishQuiet": true
+  }
+}

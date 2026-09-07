@@ -1,0 +1,2620 @@
+{
+  "package": "dsh-callback",
+  "entry": "src/index.ts",
+  "symbolCount": 117,
+  "symbols": [
+    {
+      "name": "Archive",
+      "kind": "interface",
+      "module": "src/archive.ts",
+      "doc": "归档存储门面。",
+      "signature": "export interface Archive {",
+      "members": [
+        {
+          "name": "isAvailable",
+          "type": "() => Promise<boolean>",
+          "optional": false,
+          "doc": "存储是否可用。不可用时应禁止有损下沉。"
+        },
+        {
+          "name": "archive",
+          "type": "(msgs: readonly Message[], vendor?: string | undefined) => Promise<ArchiveRef | null>",
+          "optional": false,
+          "doc": "归档一段原文。相同内容只存一次，返回既有或新建的指针。 归档不可用时返回 null，由调用方决定是否拒绝下沉。"
+        },
+        {
+          "name": "rehydrate",
+          "type": "(ref: ArchiveRef) => Promise<readonly Message[]>",
+          "optional": false,
+          "doc": "凭指针取回原文。哈希不一致抛 {@link ArchiveCorrupted}。"
+        },
+        {
+          "name": "rebuildIndex",
+          "type": "() => Promise<number>",
+          "optional": false,
+          "doc": "重建索引，返回条目数。用于进程重启后索引丢失的场景。"
+        },
+        {
+          "name": "size",
+          "type": "() => number",
+          "optional": false,
+          "doc": "当前归档条目数。"
+        }
+      ]
+    },
+    {
+      "name": "ArchiveCorrupted",
+      "kind": "class",
+      "module": "src/contract.ts",
+      "doc": "归档内容哈希与实际内容不一致，拒绝回溯、拒绝基于它的下沉。",
+      "signature": "new (message?: string, details?: Record<string, unknown>): ArchiveCorrupted",
+      "members": [
+        {
+          "name": "code",
+          "type": "CompressErrorCode",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "details",
+          "type": "Readonly<Record<string, unknown>>",
+          "optional": false,
+          "doc": "结构化上下文，便于宿主环境记录与上报。"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "stack",
+          "type": "string | undefined",
+          "optional": true,
+          "doc": ""
+        },
+        {
+          "name": "cause",
+          "type": "unknown",
+          "optional": true,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "ArchiveRecord",
+      "kind": "interface",
+      "module": "src/config.ts",
+      "doc": "归档记录。JSONL 追加文件的一行。 保存 raw 与 vendor 是为了 rehydrate 能无损还原为首次进入会话时的 API 格式。",
+      "signature": "export interface ArchiveRecord {",
+      "members": [
+        {
+          "name": "ref",
+          "type": "string",
+          "optional": false,
+          "doc": "归档记录标识，与 {@link import ('./contract.js').ArchiveRef.ref} 对应。"
+        },
+        {
+          "name": "offset",
+          "type": "number",
+          "optional": false,
+          "doc": "JSONL 文件中的字节偏移。"
+        },
+        {
+          "name": "hash",
+          "type": "string",
+          "optional": false,
+          "doc": "原文内容哈希，即 source_hash。"
+        },
+        {
+          "name": "msgs",
+          "type": "readonly Message[]",
+          "optional": false,
+          "doc": "被归档的原始消息序列。"
+        },
+        {
+          "name": "vendor",
+          "type": "string",
+          "optional": false,
+          "doc": "来源厂商标记。"
+        }
+      ]
+    },
+    {
+      "name": "ArchiveRef",
+      "kind": "interface",
+      "module": "src/contract.ts",
+      "doc": "归档指针。凭它可经 rehydrate 取回逐字原文。",
+      "signature": "export interface ArchiveRef {",
+      "members": [
+        {
+          "name": "ref",
+          "type": "string",
+          "optional": false,
+          "doc": "归档记录标识。"
+        },
+        {
+          "name": "offset",
+          "type": "number",
+          "optional": false,
+          "doc": "JSONL 文件中的字节偏移，用于索引重建。"
+        },
+        {
+          "name": "hash",
+          "type": "string",
+          "optional": false,
+          "doc": "原文内容哈希，用于一致性校验；不一致时抛 {@link ArchiveCorrupted}。"
+        }
+      ]
+    },
+    {
+      "name": "ArchiveSink",
+      "kind": "interface",
+      "module": "src/config.ts",
+      "doc": "归档存储抽象。",
+      "signature": "export interface ArchiveSink {",
+      "members": [
+        {
+          "name": "append",
+          "type": "(record: Omit<ArchiveRecord, \"offset\">) => Promise<number>",
+          "optional": false,
+          "doc": "追加一条归档记录，返回其字节偏移。"
+        },
+        {
+          "name": "read",
+          "type": "(ref: string) => Promise<ArchiveRecord | null>",
+          "optional": false,
+          "doc": "按 ref 读取一条记录。"
+        },
+        {
+          "name": "readAll",
+          "type": "() => AsyncIterable<ArchiveRecord>",
+          "optional": false,
+          "doc": "全量遍历，用于索引丢失后重建。"
+        },
+        {
+          "name": "available",
+          "type": "() => boolean | Promise<boolean>",
+          "optional": false,
+          "doc": "存储是否可用。写入失败或不可用时返回 false。"
+        }
+      ]
+    },
+    {
+      "name": "ArchiveUnavailable",
+      "kind": "class",
+      "module": "src/contract.ts",
+      "doc": "归档不可用。禁止有损下沉，但仍允许无归档需求的 L1 无损裁剪。",
+      "signature": "new (message?: string, details?: Record<string, unknown>): ArchiveUnavailable",
+      "members": [
+        {
+          "name": "code",
+          "type": "CompressErrorCode",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "details",
+          "type": "Readonly<Record<string, unknown>>",
+          "optional": false,
+          "doc": "结构化上下文，便于宿主环境记录与上报。"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "stack",
+          "type": "string | undefined",
+          "optional": true,
+          "doc": ""
+        },
+        {
+          "name": "cause",
+          "type": "unknown",
+          "optional": true,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "assignBudget",
+      "kind": "function",
+      "module": "src/gain.ts",
+      "doc": "执行预算分配。",
+      "signature": "(input: AssignBudgetInput, config: CompressConfig): BudgetAssignment[]"
+    },
+    {
+      "name": "AssignBudgetInput",
+      "kind": "interface",
+      "module": "src/gain.ts",
+      "doc": "",
+      "signature": "export interface AssignBudgetInput {",
+      "members": [
+        {
+          "name": "segments",
+          "type": "readonly Segment[]",
+          "optional": false,
+          "doc": "待分配的中部段。"
+        },
+        {
+          "name": "anchorText",
+          "type": "string",
+          "optional": false,
+          "doc": "anchor 文本：pin 约束集的拼接。"
+        },
+        {
+          "name": "segmentTexts",
+          "type": "ReadonlyMap<string, string>",
+          "optional": false,
+          "doc": "segmentId → 该段的 **L0 原文**。铁律一：绝不传摘要。"
+        },
+        {
+          "name": "retainedTexts",
+          "type": "readonly string[]",
+          "optional": false,
+          "doc": "已保留内容的文本（head 与 pin 内容），冗余度对照物。"
+        },
+        {
+          "name": "space",
+          "type": "SimilaritySpace",
+          "optional": false,
+          "doc": "相似度空间。embedding 关闭时为 TF-IDF 实现，不产生任何网络调用。"
+        }
+      ]
+    },
+    {
+      "name": "BoundaryHit",
+      "kind": "interface",
+      "module": "src/trigger.ts",
+      "doc": "任务边界命中。",
+      "signature": "export interface BoundaryHit {\r",
+      "members": [
+        {
+          "name": "messageId",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "type",
+          "type": "BoundaryType",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "BoundaryType",
+      "kind": "type-alias",
+      "module": "src/contract.ts",
+      "doc": "任务边界类型。切点优先落在这类边界上。",
+      "signature": "| 'todo-transition'\n  /** 一段连续工具调用序列终止且后续为纯文本。 */\n  | 'tool-seq-end'\n  /** 助手输出了交付总结且用户随后发起新话题。 */\n  | 'delivery-summary'\n  /** 用户新消息与前一话题的增益相关性低于阈值。 */\n  | 'topic-shift'",
+      "unionMembers": [
+        {
+          "value": "todo-transition",
+          "doc": "一条待办状态由 pending 翻转为 completed。"
+        },
+        {
+          "value": "tool-seq-end",
+          "doc": "一段连续工具调用序列终止且后续为纯文本。"
+        },
+        {
+          "value": "delivery-summary",
+          "doc": "助手输出了交付总结且用户随后发起新话题。"
+        },
+        {
+          "value": "topic-shift",
+          "doc": "用户新消息与前一话题的增益相关性低于阈值。"
+        }
+      ]
+    },
+    {
+      "name": "BudgetAssignment",
+      "kind": "interface",
+      "module": "src/contract.ts",
+      "doc": "单个段的预算分配结果。",
+      "signature": "export interface BudgetAssignment {",
+      "members": [
+        {
+          "name": "segmentId",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "relevance",
+          "type": "number",
+          "optional": false,
+          "doc": "与 anchor 的相关性，取值区间 [0, 1]。"
+        },
+        {
+          "name": "redundancy",
+          "type": "number",
+          "optional": false,
+          "doc": "与已保留内容的最大冗余度，取值区间 [0, 1]。"
+        },
+        {
+          "name": "gain",
+          "type": "number",
+          "optional": false,
+          "doc": "增益 = 相关性 − λ × 冗余度。"
+        },
+        {
+          "name": "budget",
+          "type": "number",
+          "optional": false,
+          "doc": "分配到的 token 预算。"
+        },
+        {
+          "name": "targetLevel",
+          "type": "CompressLevel",
+          "optional": false,
+          "doc": "目标下沉级别。语义反转要求最低增益也只到 L4，绝不删除。"
+        }
+      ]
+    },
+    {
+      "name": "CacheImpact",
+      "kind": "interface",
+      "module": "src/contract.ts",
+      "doc": "prompt cache 影响。稳定前缀是避免 cache 全 miss 的关键（§7.2）。",
+      "signature": "export interface CacheImpact {",
+      "members": [
+        {
+          "name": "prefixStable",
+          "type": "boolean",
+          "optional": false,
+          "doc": "头部消息序列在压缩前后是否逐字节相同。"
+        },
+        {
+          "name": "breakpointAfterHead",
+          "type": "boolean",
+          "optional": false,
+          "doc": "cache_control 断点位置是否仍位于头部之后、首个压缩块之前。"
+        }
+      ]
+    },
+    {
+      "name": "CommitAssertFailed",
+      "kind": "class",
+      "module": "src/contract.ts",
+      "doc": "提交前断言失败。整体回滚，告警必须指明失败的断言项。",
+      "signature": "new (assertion: \"tool-block-pairing\" | \"pin-in-place\" | \"token-consistency\", message: string, details?: Record<string, unknown>): CommitAssertFailed",
+      "members": [
+        {
+          "name": "assertion",
+          "type": "\"tool-block-pairing\" | \"pin-in-place\" | \"token-consistency\"",
+          "optional": false,
+          "doc": "失败的断言项：配对完整 / pin 在位 / token 一致。"
+        },
+        {
+          "name": "code",
+          "type": "CompressErrorCode",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "details",
+          "type": "Readonly<Record<string, unknown>>",
+          "optional": false,
+          "doc": "结构化上下文，便于宿主环境记录与上报。"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "stack",
+          "type": "string | undefined",
+          "optional": true,
+          "doc": ""
+        },
+        {
+          "name": "cause",
+          "type": "unknown",
+          "optional": true,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "CompressCallbacks",
+      "kind": "interface",
+      "module": "src/callbacks.ts",
+      "doc": "六个可注入钩子。全部可选，缺省走默认实现。",
+      "signature": "export interface CompressCallbacks {",
+      "members": [
+        {
+          "name": "shouldCompress",
+          "type": "((state: ContextState, config: CompressConfig) => boolean | TriggerDecision) | undefined",
+          "optional": true,
+          "doc": "触发判定。返回 boolean 或完整决策。 抛异常时视为**不压缩**。"
+        },
+        {
+          "name": "selectSegment",
+          "type": "((state: ContextState, config: CompressConfig) => readonly Segment[] | null) | undefined",
+          "optional": true,
+          "doc": "中部段切割。返回空数组表示无安全切点，本轮放弃。 抛异常时**中止本轮压缩**且不回退到任何默认切割实现。"
+        },
+        {
+          "name": "onPreCompress",
+          "type": "((state: ContextState, config: CompressConfig) => readonly PinRecord[]) | undefined",
+          "optional": true,
+          "doc": "pin 识别。返回本轮识别到的全部保护记录。 抛异常时**继续**，退回静态 pin 白名单，并记一条 pin_hook_degraded 告警。"
+        },
+        {
+          "name": "compress",
+          "type": "(input: CompressInput, signal: AbortSignal) => CompressOutput | Promise<CompressOutput>",
+          "optional": false,
+          "doc": "压缩执行。这是唯一必须提供的钩子。 超时由 {@link CompressInput.signal} 控制，失败走降级链。"
+        },
+        {
+          "name": "verify",
+          "type": "((input: VerifyInput, config: CompressConfig) => VerifyReport) | undefined",
+          "optional": true,
+          "doc": "实体校验。 抛异常时**视为不通过**，走 §8.2 降级链，并记 verify_hook_error 告警。"
+        },
+        {
+          "name": "onError",
+          "type": "((error: unknown, context: ErrorContext) => void) | undefined",
+          "optional": true,
+          "doc": "错误出口。自身抛出的异常会被静默吞掉，不得影响主流程。"
+        }
+      ]
+    },
+    {
+      "name": "CompressConfig",
+      "kind": "interface",
+      "module": "src/config.ts",
+      "doc": "压缩配置。全部阈值集中于此，源码其余位置不得出现待标定数字。",
+      "signature": "export interface CompressConfig {",
+      "members": [
+        {
+          "name": "triggerRatio",
+          "type": "number",
+          "optional": false,
+          "doc": "触发线：占用率高于此值才考虑压缩。"
+        },
+        {
+          "name": "targetRatio",
+          "type": "number",
+          "optional": false,
+          "doc": "目标线：压缩后应回落到此值以下。必须小于 triggerRatio。"
+        },
+        {
+          "name": "minGapTurns",
+          "type": "number",
+          "optional": false,
+          "doc": "频率下限轮数：距上次成功压缩小于此轮数则抑制，避免临界点反复压缩。"
+        },
+        {
+          "name": "maxWaitTurns",
+          "type": "number",
+          "optional": false,
+          "doc": "等待上限轮数：始终无任务边界且超过此轮数则强制压缩。"
+        },
+        {
+          "name": "relevanceThreshold",
+          "type": "number",
+          "optional": false,
+          "doc": "topic-shift 边界判定用的增益相关性阈值。"
+        },
+        {
+          "name": "tailTurns",
+          "type": "number",
+          "optional": false,
+          "doc": "尾部保留的消息条数。这些消息永不压缩，保证最近上下文始终完整在场。"
+        },
+        {
+          "name": "sinkLimit",
+          "type": "number",
+          "optional": false,
+          "doc": "下沉次数上限：compress_count 达此值即停止有损重压，直接落 L4。"
+        },
+        {
+          "name": "maxLevel",
+          "type": "CompressLevel",
+          "optional": false,
+          "doc": "允许的最深级别。"
+        },
+        {
+          "name": "lambda",
+          "type": "number",
+          "optional": false,
+          "doc": "冗余度权重 λ。增益 = 相关性 − λ × 冗余度。"
+        },
+        {
+          "name": "targetBudgetTokens",
+          "type": "number",
+          "optional": false,
+          "doc": "中部段的目标 token 预算。各段 budget 之和不得超过它。"
+        },
+        {
+          "name": "embeddingEnabled",
+          "type": "boolean",
+          "optional": false,
+          "doc": "是否启用 embedding。关闭时退化为纯 TF-IDF 字符二元组，无任何网络调用。"
+        },
+        {
+          "name": "softEntityRetainThreshold",
+          "type": "number",
+          "optional": false,
+          "doc": "软实体保留率阈值，低于则按配置处置（告警但允许通过）。"
+        },
+        {
+          "name": "softEntityAction",
+          "type": "Readonly<Partial<Record<EntityCategory, \"warn\" | \"reject\">>>",
+          "optional": false,
+          "doc": "各类软实体的处置动作。"
+        },
+        {
+          "name": "advancedVerifyEnabled",
+          "type": "boolean",
+          "optional": false,
+          "doc": "进阶事实问答校验开关，默认关闭（会调用额外模型）。"
+        },
+        {
+          "name": "llmTimeoutMs",
+          "type": "number",
+          "optional": false,
+          "doc": "LLM 摘要级超时（毫秒），由 AbortController 控制。"
+        },
+        {
+          "name": "heuristicTimeoutMs",
+          "type": "number",
+          "optional": false,
+          "doc": "规则抽取级超时（毫秒）。"
+        },
+        {
+          "name": "truncateTimeoutMs",
+          "type": "number",
+          "optional": false,
+          "doc": "硬截断级超时（毫秒）。"
+        },
+        {
+          "name": "llmRetryCount",
+          "type": "number",
+          "optional": false,
+          "doc": "LLM 返回非法 JSON 时的重试次数。契约要求最多一次。"
+        },
+        {
+          "name": "tokenEstimateTolerance",
+          "type": "number",
+          "optional": false,
+          "doc": "提交断言：next_msgs 实际 token 数与预估值的容许偏差比例，超出则回滚。"
+        },
+        {
+          "name": "l1OversizeLines",
+          "type": "number",
+          "optional": false,
+          "doc": "单条工具 stdout 超过该行数视为超长，只保留首尾。"
+        },
+        {
+          "name": "l1EdgeKeepLines",
+          "type": "number",
+          "optional": false,
+          "doc": "超长 stdout 保留的首部与尾部行数。"
+        },
+        {
+          "name": "archive",
+          "type": "ArchiveSink | null",
+          "optional": false,
+          "doc": "归档存储。为 null 表示无归档能力，此时禁止有损下沉。"
+        },
+        {
+          "name": "countTokens",
+          "type": "TokenCounter",
+          "optional": false,
+          "doc": "token 计数器。"
+        },
+        {
+          "name": "embed",
+          "type": "Embedder | null",
+          "optional": false,
+          "doc": "文本向量化器。embeddingEnabled 为 true 时必须提供。"
+        },
+        {
+          "name": "onObservation",
+          "type": "ObservationHook | null",
+          "optional": false,
+          "doc": "观测回调。"
+        },
+        {
+          "name": "onWarning",
+          "type": "WarningHook | null",
+          "optional": false,
+          "doc": "告警回调。"
+        }
+      ]
+    },
+    {
+      "name": "CompressedBlock",
+      "kind": "interface",
+      "module": "src/contract.ts",
+      "doc": "压缩产物。",
+      "signature": "export interface CompressedBlock {",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "level",
+          "type": "CompressLevel",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "method",
+          "type": "CompressMethod",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "optional": false,
+          "doc": "进入上下文的文本。"
+        },
+        {
+          "name": "sourceSpan",
+          "type": "SourceSpan",
+          "optional": false,
+          "doc": "永远指向 L0 原文的消息 ID，不指向另一个摘要块。"
+        },
+        {
+          "name": "archiveRef",
+          "type": "ArchiveRef | null",
+          "optional": false,
+          "doc": "L4 与全部有损级别必须非空，否则禁止下沉。"
+        },
+        {
+          "name": "epoch",
+          "type": "number",
+          "optional": false,
+          "doc": "产出时的 epoch。"
+        },
+        {
+          "name": "compressCount",
+          "type": "number",
+          "optional": false,
+          "doc": "已下沉次数，达配置上限后停止有损重压。"
+        },
+        {
+          "name": "tokens",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "degraded",
+          "type": "boolean",
+          "optional": false,
+          "doc": "本块是否走了降级链。"
+        }
+      ]
+    },
+    {
+      "name": "CompressError",
+      "kind": "class",
+      "module": "src/contract.ts",
+      "doc": "压缩错误基类。",
+      "signature": "new (code: CompressErrorCode, message: string, details?: Record<string, unknown>): CompressError",
+      "members": [
+        {
+          "name": "code",
+          "type": "CompressErrorCode",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "details",
+          "type": "Readonly<Record<string, unknown>>",
+          "optional": false,
+          "doc": "结构化上下文，便于宿主环境记录与上报。"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "stack",
+          "type": "string | undefined",
+          "optional": true,
+          "doc": ""
+        },
+        {
+          "name": "cause",
+          "type": "unknown",
+          "optional": true,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "CompressErrorCode",
+      "kind": "type-alias",
+      "module": "src/contract.ts",
+      "doc": "压缩错误码。",
+      "signature": "| 'no-compression-possible'\n  /** 归档内容哈希不一致。 */\n  | 'archive-corrupted'\n  /** 归档不可用，禁止有损下沉。 */\n  | 'archive-unavailable'\n  /** 用户钩子抛异常。 */\n  | 'hook-error'\n  /** 提交前断言失败，整体回滚。 */\n  | 'commit-assert-failed'\n  /** 提交前断言失败的具体项。 */\n  | 'verify-failed'",
+      "unionMembers": [
+        {
+          "value": "no-compression-possible",
+          "doc": "三级降级全部失败，压缩不可能完成。"
+        },
+        {
+          "value": "archive-corrupted",
+          "doc": "归档内容哈希不一致。"
+        },
+        {
+          "value": "archive-unavailable",
+          "doc": "归档不可用，禁止有损下沉。"
+        },
+        {
+          "value": "hook-error",
+          "doc": "用户钩子抛异常。"
+        },
+        {
+          "value": "commit-assert-failed",
+          "doc": "提交前断言失败，整体回滚。"
+        },
+        {
+          "value": "verify-failed",
+          "doc": "提交前断言失败的具体项。"
+        }
+      ]
+    },
+    {
+      "name": "CompressInput",
+      "kind": "interface",
+      "module": "src/callbacks.ts",
+      "doc": "compress 钩子的入参。",
+      "signature": "export interface CompressInput {",
+      "members": [
+        {
+          "name": "text",
+          "type": "string",
+          "optional": false,
+          "doc": "待压缩的**原文**文本。铁律一：永远从 L0 原文压缩，绝不传摘要。"
+        },
+        {
+          "name": "level",
+          "type": "CompressLevel",
+          "optional": false,
+          "doc": "目标级别。"
+        },
+        {
+          "name": "budget",
+          "type": "number",
+          "optional": false,
+          "doc": "该段的 token 预算。"
+        },
+        {
+          "name": "key",
+          "type": "IdempotencyKey",
+          "optional": false,
+          "doc": "幂等键，宿主可据此自行缓存。"
+        },
+        {
+          "name": "signal",
+          "type": "AbortSignal",
+          "optional": false,
+          "doc": "超时中断信号。宿主必须响应它，否则超时后仍会残留未取消的网络调用。"
+        },
+        {
+          "name": "config",
+          "type": "CompressConfig",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "CompressLevel",
+      "kind": "type-alias",
+      "module": "src/contract.ts",
+      "doc": "压缩级别。 - L0 原文 - L1 抽取式去噪（唯一被强制「输出 ⊆ 输入」的级别） - L2 分槽位结构化摘要 - L3 更粗粒度摘要 - L4 指针（仅说明存在过什么与如何取回）",
+      "signature": "0 | 1 | 2 | 3 | 4"
+    },
+    {
+      "name": "CompressMethod",
+      "kind": "type-alias",
+      "module": "src/contract.ts",
+      "doc": "压缩产出的实际方法。 该标记必须随报告落盘，用于事后判定该段上下文的可信度（§9.1）。",
+      "signature": "| 'llm'\n  /** 降级为规则抽取式。 */\n  | 'heuristic'\n  /** 降级为硬截断。 */\n  | 'truncate'\n  /** 未压缩（纯保留或 pin 段）。 */\n  | 'none'",
+      "unionMembers": [
+        {
+          "value": "llm",
+          "doc": "LLM 摘要成功。"
+        },
+        {
+          "value": "heuristic",
+          "doc": "降级为规则抽取式。"
+        },
+        {
+          "value": "truncate",
+          "doc": "降级为硬截断。"
+        },
+        {
+          "value": "none",
+          "doc": "未压缩（纯保留或 pin 段）。"
+        }
+      ]
+    },
+    {
+      "name": "CompressOutput",
+      "kind": "interface",
+      "module": "src/callbacks.ts",
+      "doc": "compress 钩子的出参。",
+      "signature": "export interface CompressOutput {",
+      "members": [
+        {
+          "name": "text",
+          "type": "string",
+          "optional": false,
+          "doc": "压缩后的文本。L1 级别下它必须是 input.text 的子集。"
+        },
+        {
+          "name": "slots",
+          "type": "SummarySlots | undefined",
+          "optional": true,
+          "doc": "L2 及以上的分槽位结果。省略时框架按纯文本处理。"
+        }
+      ]
+    },
+    {
+      "name": "ConfigError",
+      "kind": "class",
+      "module": "src/config.ts",
+      "doc": "配置校验错误。",
+      "signature": "new (message: string): ConfigError",
+      "members": [
+        {
+          "name": "name",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "stack",
+          "type": "string | undefined",
+          "optional": true,
+          "doc": ""
+        },
+        {
+          "name": "cause",
+          "type": "unknown",
+          "optional": true,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "ContextCompressor",
+      "kind": "interface",
+      "module": "src/api.ts",
+      "doc": "压缩器实例。",
+      "signature": "export interface ContextCompressor {",
+      "members": [
+        {
+          "name": "maybeCompress",
+          "type": "(state: ContextState) => Promise<ContextState>",
+          "optional": false,
+          "doc": "对当前状态评估并执行（或跳过）一轮压缩。 返回值要么是全新的 ContextState（已提交，epoch+1）， 要么是原状态引用逐字节不变（未触发 / 中止 / 回滚）。"
+        },
+        {
+          "name": "observations",
+          "type": "() => readonly ObservationRecord[]",
+          "optional": false,
+          "doc": "全部观测记录。"
+        },
+        {
+          "name": "config",
+          "type": "CompressConfig",
+          "optional": false,
+          "doc": "生效配置（合并默认值后）。"
+        }
+      ]
+    },
+    {
+      "name": "ContextState",
+      "kind": "interface",
+      "module": "src/contract.ts",
+      "doc": "上下文状态。 `msgs` 以不可变数组持有，压缩采用「构造 next_msgs → 断言 → 整体替换」的提交方式， 中途失败则引用与内容逐字节保持原样（§9.2 原子性）。",
+      "signature": "export interface ContextState {",
+      "members": [
+        {
+          "name": "msgs",
+          "type": "readonly Message[]",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "epoch",
+          "type": "number",
+          "optional": false,
+          "doc": "单调递增值，每次成功提交 +1，用于 CAS 冲突检测。"
+        },
+        {
+          "name": "blocks",
+          "type": "readonly ToolBlock[]",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "pins",
+          "type": "readonly PinRecord[]",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "compressed",
+          "type": "readonly CompressedBlock[]",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "tokens",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "capacity",
+          "type": "number",
+          "optional": false,
+          "doc": "上下文窗口容量。"
+        }
+      ]
+    },
+    {
+      "name": "createArchive",
+      "kind": "function",
+      "module": "src/archive.ts",
+      "doc": "创建归档门面。 `sink` 为 null 表示无归档能力：此时 `archive()` 恒返回 null、`isAvailable()` 恒为 false。",
+      "signature": "(sink: ArchiveSink | null, hash?: HashFn): Archive"
+    },
+    {
+      "name": "CreateCompressorOptions",
+      "kind": "interface",
+      "module": "src/api.ts",
+      "doc": "",
+      "signature": "export interface CreateCompressorOptions {",
+      "members": [
+        {
+          "name": "config",
+          "type": "Partial<CompressConfig> | undefined",
+          "optional": true,
+          "doc": "配置覆盖。未提供的项取 DEFAULT_CONFIG 占位值，建议按 §13 标定后显式传入。"
+        },
+        {
+          "name": "callbacks",
+          "type": "CompressCallbacks",
+          "optional": false,
+          "doc": "宿主回调。compress 为必填语义，其余钩子缺省走默认实现。"
+        }
+      ]
+    },
+    {
+      "name": "createContextCompressor",
+      "kind": "function",
+      "module": "src/api.ts",
+      "doc": "创建压缩器。非法配置在此即刻失败，不带入压缩流程。",
+      "signature": "(options: CreateCompressorOptions): ContextCompressor"
+    },
+    {
+      "name": "createEmbedderSpace",
+      "kind": "function",
+      "module": "src/gain.ts",
+      "doc": "embedding 模式的相似度空间：向量化由宿主提供，余弦本地计算。",
+      "signature": "(embed: Embedder): SimilaritySpace"
+    },
+    {
+      "name": "createOrchestrator",
+      "kind": "function",
+      "module": "src/orchestrator.ts",
+      "doc": "",
+      "signature": "(options: OrchestratorOptions): Orchestrator"
+    },
+    {
+      "name": "createVectorSpace",
+      "kind": "function",
+      "module": "src/signals.ts",
+      "doc": "",
+      "signature": "(): VectorSpace"
+    },
+    {
+      "name": "dedupePins",
+      "kind": "function",
+      "module": "src/pins.ts",
+      "doc": "合并去重：同一条消息只保留一条 pin，reason 取优先级最高者。 局部 pin（带 span）优先于整条 pin，避免为图省事把整条长消息锁死。",
+      "signature": "(hits: readonly PinRecord[]): PinRecord[]"
+    },
+    {
+      "name": "DEFAULT_CALLBACKS",
+      "kind": "const",
+      "module": "src/defaults.ts",
+      "doc": "默认回调集。**compress 不在其中** —— 它是宿主唯一必须提供的钩子。",
+      "signature": "Omit<CompressCallbacks, 'compress'>",
+      "value": "{ shouldCompress: (state, config) => { const space = createVectorSpace(); // 门面不持有轮次历史：epoch 0（从未压缩过）视为不受频率下限约束， // 否则默认…"
+    },
+    {
+      "name": "DEFAULT_CONFIG",
+      "kind": "const",
+      "module": "src/config.ts",
+      "doc": "保守占位默认值。规划 §13 实测标定后替换。",
+      "signature": "CompressConfig",
+      "value": "{ triggerRatio: 0.7, targetRatio: 0.5, minGapTurns: 3, maxWaitTurns: 12, relevanceThreshold: 0.15, tailTurns: 6, sinkLim…"
+    },
+    {
+      "name": "defaultHash",
+      "kind": "const",
+      "module": "src/archive.ts",
+      "doc": "默认哈希：SHA-256 十六进制。",
+      "signature": "HashFn",
+      "value": "(text) => createHash('sha256').update(text, 'utf8').digest('hex')"
+    },
+    {
+      "name": "defaultOnError",
+      "kind": "function",
+      "module": "src/defaults.ts",
+      "doc": "默认错误出口：什么都不做。宿主应提供自己的实现以接入日志/监控。",
+      "signature": "(): void"
+    },
+    {
+      "name": "defaultOnPreCompress",
+      "kind": "function",
+      "module": "src/defaults.ts",
+      "doc": "默认 pin 识别：静态白名单 + 铁律三强制 pin，按优先级去重。",
+      "signature": "(state: ContextState, config: CompressConfig): readonly PinRecord[]"
+    },
+    {
+      "name": "defaultSelectSegment",
+      "kind": "function",
+      "module": "src/defaults.ts",
+      "doc": "默认切割：按 block 边界切中部，无安全切点返回空数组。",
+      "signature": "(state: ContextState, config: CompressConfig): Segment[]"
+    },
+    {
+      "name": "defaultShouldCompress",
+      "kind": "function",
+      "module": "src/defaults.ts",
+      "doc": "默认触发判定：双水位 + 迟滞 + 任务边界 + 频率下限。",
+      "signature": "(ctx: TriggerContext): TriggerDecision"
+    },
+    {
+      "name": "defaultTokenCounter",
+      "kind": "function",
+      "module": "src/config.ts",
+      "doc": "内置 token 估算：中英文混排的保守近似。 中文按字符计，拉丁按空白与标点切分计，另加每条约 4 token 的消息开销。 宿主环境应提供真实 tokenizer 替换它。",
+      "signature": "(text: string): number"
+    },
+    {
+      "name": "defaultVerify",
+      "kind": "function",
+      "module": "src/defaults.ts",
+      "doc": "默认实体校验：正则硬/软实体 + 硬槽位逐字定位。",
+      "signature": "(input: VerifyInput, config: CompressConfig): VerifyReport"
+    },
+    {
+      "name": "detectBoundaries",
+      "kind": "function",
+      "module": "src/trigger.ts",
+      "doc": "识别任务边界。四类信号的实现都是**确定性**的文本规则： - todo-transition：待办由 pending 翻转为 completed 的那条消息； - tool-seq-end：工具调用序列终止后第一条纯文本消息； - delivery-summary：助手输出交付总结后的下一条用户消息； - topic-shift：相邻两条用户消息相关性低于阈值（需要 space，缺省跳过该类）。",
+      "signature": "(state: ContextState, config: CompressConfig, space?: SimilaritySpace | undefined): BoundaryHit[]"
+    },
+    {
+      "name": "Embedder",
+      "kind": "type-alias",
+      "module": "src/config.ts",
+      "doc": "文本向量化钩子。开启 embedding 时由宿主提供；缺省走内置 TF-IDF。",
+      "signature": "(text: string) => readonly number[]"
+    },
+    {
+      "name": "EntityCategory",
+      "kind": "type-alias",
+      "module": "src/contract.ts",
+      "doc": "受校验的实体类别。",
+      "signature": "| 'windows-path'\n  /** 硬实体：POSIX 路径。 */\n  | 'posix-path'\n  /** 硬实体：URL。 */\n  | 'url'\n  /** 硬实体：UUID 或 commit hash。 */\n  | 'uuid-or-hash'\n  /** 硬实体：反引号包裹的命令与符号。 */\n  | 'command-symbol'\n  /** 软实体：数值与百分比。 */\n  | 'number-percent'\n  /** 软实体：人名与专名。 */\n  | 'person-name'",
+      "unionMembers": [
+        {
+          "value": "windows-path",
+          "doc": "硬实体：Windows 绝对路径。"
+        },
+        {
+          "value": "posix-path",
+          "doc": "硬实体：POSIX 路径。"
+        },
+        {
+          "value": "url",
+          "doc": "硬实体：URL。"
+        },
+        {
+          "value": "uuid-or-hash",
+          "doc": "硬实体：UUID 或 commit hash。"
+        },
+        {
+          "value": "command-symbol",
+          "doc": "硬实体：反引号包裹的命令与符号。"
+        },
+        {
+          "value": "number-percent",
+          "doc": "软实体：数值与百分比。"
+        },
+        {
+          "value": "person-name",
+          "doc": "软实体：人名与专名。"
+        }
+      ]
+    },
+    {
+      "name": "ErrorContext",
+      "kind": "interface",
+      "module": "src/callbacks.ts",
+      "doc": "错误上下文。",
+      "signature": "export interface ErrorContext {",
+      "members": [
+        {
+          "name": "hook",
+          "type": "string | null",
+          "optional": false,
+          "doc": "出错的钩子名，未命中钩子时为 null。"
+        },
+        {
+          "name": "phase",
+          "type": "\"trigger\" | \"select\" | \"pin\" | \"compress\" | \"verify\" | \"commit\"",
+          "optional": false,
+          "doc": "所处阶段。"
+        },
+        {
+          "name": "state",
+          "type": "ContextState",
+          "optional": false,
+          "doc": "出错时的上下文快照引用。"
+        }
+      ]
+    },
+    {
+      "name": "extractHardEntities",
+      "kind": "function",
+      "module": "src/patterns.ts",
+      "doc": "提取文本中某一类硬实体。uuid-or-hash 同时匹配 UUID 与十六进制串。",
+      "signature": "(text: string, category: EntityCategory): string[]"
+    },
+    {
+      "name": "extractSlots",
+      "kind": "function",
+      "module": "src/levels/l2.ts",
+      "doc": "从原文抽取分槽位摘要。 全部硬槽位取值都是原文的逐字行，narrative 也取原文行（兜底路径不引入改写）。",
+      "signature": "(msgs: readonly Message[]): SummarySlots"
+    },
+    {
+      "name": "FallbackLevel",
+      "kind": "interface",
+      "module": "src/callbacks.ts",
+      "doc": "降级链每一级的实现签名，供 {@link CompressCallbacks.compress} 之外的兜底级复用。",
+      "signature": "export interface FallbackLevel {",
+      "members": [
+        {
+          "name": "method",
+          "type": "CompressMethod",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "run",
+          "type": "(input: CompressInput, signal: AbortSignal) => CompressOutput | Promise<CompressOutput>",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "FallbackResult",
+      "kind": "interface",
+      "module": "src/fallback.ts",
+      "doc": "",
+      "signature": "export interface FallbackResult {",
+      "members": [
+        {
+          "name": "output",
+          "type": "CompressOutput",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "method",
+          "type": "CompressMethod",
+          "optional": false,
+          "doc": "实际执行的级别。"
+        },
+        {
+          "name": "degraded",
+          "type": "boolean",
+          "optional": false,
+          "doc": "走了降级链即 true。"
+        },
+        {
+          "name": "warnings",
+          "type": "readonly string[]",
+          "optional": false,
+          "doc": "各级降级原因，写入观测报告。"
+        }
+      ]
+    },
+    {
+      "name": "HARD_ENTITY_CATEGORIES",
+      "kind": "const",
+      "module": "src/contract.ts",
+      "doc": "硬实体类别集合。这些类别的保留率要求恒为 1.0。",
+      "signature": "readonly EntityCategory[]",
+      "value": "[ 'windows-path', 'posix-path', 'url', 'uuid-or-hash', 'command-symbol', ] as const"
+    },
+    {
+      "name": "HARD_ENTITY_PATTERNS",
+      "kind": "const",
+      "module": "src/patterns.ts",
+      "doc": "硬实体类别 → 正则。",
+      "signature": "Readonly<Record<'windows-path' | 'posix-path' | 'url' | 'uuid-or-hash' | 'command-symbol', RegExp>>",
+      "value": "{ 'windows-path': RE_WINDOWS_PATH, 'posix-path': RE_POSIX_PATH, 'url': RE_URL, 'uuid-or-hash': RE_UUID, 'command-symbol'…"
+    },
+    {
+      "name": "HARD_ENTITY_RETAIN_REQUIRED",
+      "kind": "const",
+      "module": "src/contract.ts",
+      "doc": "硬实体保留率要求。 它不是阈值而是契约本身：路径、URL、UUID、命令符号错一个字符， Agent 就会对错误目标执行破坏性操作，因此没有标定空间。",
+      "signature": "1",
+      "value": "1.0 as const"
+    },
+    {
+      "name": "HashFn",
+      "kind": "type-alias",
+      "module": "src/archive.ts",
+      "doc": "哈希函数。宿主可注入（例如浏览器环境替换 node:crypto）。",
+      "signature": "(text: string) => string"
+    },
+    {
+      "name": "hashMessages",
+      "kind": "function",
+      "module": "src/archive.ts",
+      "doc": "一批原文的 source_hash。",
+      "signature": "(msgs: readonly Message[], hash?: HashFn): string"
+    },
+    {
+      "name": "HookError",
+      "kind": "class",
+      "module": "src/contract.ts",
+      "doc": "用户钩子抛异常。携带钩子名，便于区分 shouldCompress / onPreCompress / selectSegment 等不同处置方向。",
+      "signature": "new (hook: string, cause: unknown): HookError",
+      "members": [
+        {
+          "name": "hook",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "code",
+          "type": "CompressErrorCode",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "details",
+          "type": "Readonly<Record<string, unknown>>",
+          "optional": false,
+          "doc": "结构化上下文，便于宿主环境记录与上报。"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "stack",
+          "type": "string | undefined",
+          "optional": true,
+          "doc": ""
+        },
+        {
+          "name": "cause",
+          "type": "unknown",
+          "optional": true,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "IdempotencyKey",
+      "kind": "interface",
+      "module": "src/callbacks.ts",
+      "doc": "幂等键。四元组 (startId, endId, level, epoch)。 相同幂等键重复请求必须复用缓存结果，避免重复消耗 LLM 调用与缓存抖动。",
+      "signature": "export interface IdempotencyKey {",
+      "members": [
+        {
+          "name": "startId",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "endId",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "level",
+          "type": "CompressLevel",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "epoch",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "idempotencyKeyOf",
+      "kind": "function",
+      "module": "src/callbacks.ts",
+      "doc": "把幂等键序列化为稳定字符串，用作缓存键。",
+      "signature": "(key: IdempotencyKey): string"
+    },
+    {
+      "name": "identifyIncompleteBlockPins",
+      "kind": "function",
+      "module": "src/pins.ts",
+      "doc": "铁律三强制 pin：不完整或畸形的 tool block 在任何级别都不参与压缩。 这些 pin 是强制项，优先级最高，不随用户钩子的返回值变化。",
+      "signature": "(state: ContextState): PinRecord[]"
+    },
+    {
+      "name": "identifyStaticPins",
+      "kind": "function",
+      "module": "src/pins.ts",
+      "doc": "静态白名单识别。覆盖八种 reason 中除 `tool-block-incomplete` 之外的全部情形。 顺序无关，最终由 {@link dedupePins} 按优先级收敛。",
+      "signature": "(state: ContextState): PinRecord[]"
+    },
+    {
+      "name": "isBlockCompressible",
+      "kind": "function",
+      "module": "src/blocks.ts",
+      "doc": "该块是否可参与压缩。不完整或畸形的块被强制 pin，任何级别都不参与。",
+      "signature": "(block: ToolBlock): boolean"
+    },
+    {
+      "name": "isPinned",
+      "kind": "function",
+      "module": "src/pins.ts",
+      "doc": "该消息是否被 pin。",
+      "signature": "(pins: readonly PinRecord[], msgId: string): boolean"
+    },
+    {
+      "name": "JsonlArchiveSink",
+      "kind": "class",
+      "module": "src/archive.ts",
+      "doc": "JSONL 追加文件归档 sink。",
+      "signature": "new (filePath: string): JsonlArchiveSink",
+      "members": [
+        {
+          "name": "filePath",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "append",
+          "type": "(record: Omit<ArchiveRecord, \"offset\">) => Promise<number>",
+          "optional": false,
+          "doc": "追加一条归档记录，返回其字节偏移。"
+        },
+        {
+          "name": "read",
+          "type": "(ref: string) => Promise<ArchiveRecord | null>",
+          "optional": false,
+          "doc": "按 ref 读取一条记录。"
+        },
+        {
+          "name": "readAll",
+          "type": "() => AsyncIterable<ArchiveRecord>",
+          "optional": false,
+          "doc": "全量遍历，用于索引丢失后重建。"
+        },
+        {
+          "name": "available",
+          "type": "() => boolean",
+          "optional": false,
+          "doc": "存储是否可用。写入失败或不可用时返回 false。"
+        },
+        {
+          "name": "ensureDir",
+          "type": "() => void",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "l1Denoise",
+      "kind": "function",
+      "module": "src/levels/l1.ts",
+      "doc": "对一个段的原始消息序列执行 L1 去噪。 输出的每一行都可在输入中逐字定位；规则命中记录仅供报告与契约断言使用。",
+      "signature": "(msgs: readonly Message[], config: CompressConfig): L1Result"
+    },
+    {
+      "name": "L1Result",
+      "kind": "interface",
+      "module": "src/levels/l1.ts",
+      "doc": "",
+      "signature": "export interface L1Result {",
+      "members": [
+        {
+          "name": "text",
+          "type": "string",
+          "optional": false,
+          "doc": "去噪后的文本（原文行的子集，保持原始顺序）。"
+        },
+        {
+          "name": "appliedRules",
+          "type": "readonly string[]",
+          "optional": false,
+          "doc": "命中的规则名，按处理顺序去重排列。"
+        }
+      ]
+    },
+    {
+      "name": "l3Coarsen",
+      "kind": "function",
+      "module": "src/levels/l3.ts",
+      "doc": "L3 粗化：保留首尾各 `l1EdgeKeepLines` 行 + 全部显著行，其余删除。 输出仍是原文行子集（method 记 heuristic 时依赖这一性质）。",
+      "signature": "(text: string, config: CompressConfig): string"
+    },
+    {
+      "name": "l4PointerText",
+      "kind": "function",
+      "module": "src/levels/l4.ts",
+      "doc": "L4 指针文本。",
+      "signature": "(startId: string, endId: string, msgCount: number, archiveRef: string): string"
+    },
+    {
+      "name": "Match",
+      "kind": "interface",
+      "module": "src/patterns.ts",
+      "doc": "一次正则匹配结果，带字符区间，供 span pin 使用。",
+      "signature": "export interface Match {",
+      "members": [
+        {
+          "name": "value",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "start",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "end",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "matchAll",
+      "kind": "function",
+      "module": "src/patterns.ts",
+      "doc": "在文本中找出全部匹配，返回带区间的列表。",
+      "signature": "(text: string, re: RegExp): Match[]"
+    },
+    {
+      "name": "MemoryArchiveSink",
+      "kind": "class",
+      "module": "src/archive.ts",
+      "doc": "内存归档 sink。 无文件系统权限或不想落盘时的等价实现，语义与 JSONL 版一致（只追加、偏移单调）。",
+      "signature": "class MemoryArchiveSink",
+      "members": [
+        {
+          "name": "records",
+          "type": "ArchiveRecord[]",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "cursor",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "append",
+          "type": "(record: Omit<ArchiveRecord, \"offset\">) => Promise<number>",
+          "optional": false,
+          "doc": "追加一条归档记录，返回其字节偏移。"
+        },
+        {
+          "name": "read",
+          "type": "(ref: string) => Promise<ArchiveRecord | null>",
+          "optional": false,
+          "doc": "按 ref 读取一条记录。"
+        },
+        {
+          "name": "readAll",
+          "type": "() => AsyncIterable<ArchiveRecord>",
+          "optional": false,
+          "doc": "全量遍历，用于索引丢失后重建。"
+        },
+        {
+          "name": "available",
+          "type": "() => boolean",
+          "optional": false,
+          "doc": "存储是否可用。写入失败或不可用时返回 false。"
+        }
+      ]
+    },
+    {
+      "name": "Message",
+      "kind": "interface",
+      "module": "src/contract.ts",
+      "doc": "会话中的一条消息。",
+      "signature": "export interface Message {",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": "消息唯一标识。切点、source_span、归档指针全部以它为锚。"
+        },
+        {
+          "name": "role",
+          "type": "Role",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "content",
+          "type": "string",
+          "optional": false,
+          "doc": "文本内容。tool 消息为 result 的文本载荷。"
+        },
+        {
+          "name": "toolCalls",
+          "type": "readonly ToolCall[] | undefined",
+          "optional": true,
+          "doc": "assistant 消息发起的工具调用（可并行多个）。"
+        },
+        {
+          "name": "toolCallId",
+          "type": "string | undefined",
+          "optional": true,
+          "doc": "tool 消息所回应的 {@link ToolCall.id}。"
+        },
+        {
+          "name": "raw",
+          "type": "unknown",
+          "optional": true,
+          "doc": "原始载荷。归档保存它，rehydrate 才能无损还原为首次进入会话时的 API 格式， 不因展平为 text 字段而丢失结构化内容。"
+        },
+        {
+          "name": "vendor",
+          "type": "Vendor | undefined",
+          "optional": true,
+          "doc": "来源厂商标记，缺省视为 `generic`。"
+        },
+        {
+          "name": "tokens",
+          "type": "number | undefined",
+          "optional": true,
+          "doc": "已知 token 数；缺省由计数钩子估算。"
+        }
+      ]
+    },
+    {
+      "name": "msgTokens",
+      "kind": "function",
+      "module": "src/blocks.ts",
+      "doc": "单条消息的 token 数。消息自带计数优先，否则用配置的计数器估算。",
+      "signature": "(msg: Message, countTokens: TokenCounter): number"
+    },
+    {
+      "name": "NoCompressionPossible",
+      "kind": "class",
+      "module": "src/contract.ts",
+      "doc": "三级降级链全部失败。上下文必须保持逐字节原样。",
+      "signature": "new (message?: string, details?: Record<string, unknown>): NoCompressionPossible",
+      "members": [
+        {
+          "name": "code",
+          "type": "CompressErrorCode",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "details",
+          "type": "Readonly<Record<string, unknown>>",
+          "optional": false,
+          "doc": "结构化上下文，便于宿主环境记录与上报。"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "stack",
+          "type": "string | undefined",
+          "optional": true,
+          "doc": ""
+        },
+        {
+          "name": "cause",
+          "type": "unknown",
+          "optional": true,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "ObservationHook",
+      "kind": "type-alias",
+      "module": "src/config.ts",
+      "doc": "观测回调。以回调形式暴露，不绑定任何特定监控实现。",
+      "signature": "(record: import('./contract.js').ObservationRecord) => void"
+    },
+    {
+      "name": "ObservationRecord",
+      "kind": "interface",
+      "module": "src/contract.ts",
+      "doc": "一轮压缩的观测记录。以回调或事件形式暴露，不绑定任何特定监控实现。",
+      "signature": "export interface ObservationRecord {",
+      "members": [
+        {
+          "name": "epoch",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "beforeTokens",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "afterTokens",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "ratio",
+          "type": "number",
+          "optional": false,
+          "doc": "压缩比 afterTokens / beforeTokens。"
+        },
+        {
+          "name": "durationMs",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "level",
+          "type": "CompressLevel",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "method",
+          "type": "CompressMethod",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "degraded",
+          "type": "boolean",
+          "optional": false,
+          "doc": "本轮是否走了降级。"
+        },
+        {
+          "name": "pinCount",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "cacheImpact",
+          "type": "CacheImpact",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "warnings",
+          "type": "readonly string[]",
+          "optional": false,
+          "doc": "本轮告警。"
+        }
+      ]
+    },
+    {
+      "name": "Orchestrator",
+      "kind": "interface",
+      "module": "src/orchestrator.ts",
+      "doc": "编排器。",
+      "signature": "export interface Orchestrator {\r",
+      "members": [
+        {
+          "name": "maybeCompress",
+          "type": "(state: ContextState) => Promise<ContextState>",
+          "optional": false,
+          "doc": "对当前状态评估并（在触发条件满足时）执行一轮压缩。"
+        },
+        {
+          "name": "observations",
+          "type": "() => readonly ObservationRecord[]",
+          "optional": false,
+          "doc": "全部观测记录（按提交顺序）。"
+        }
+      ]
+    },
+    {
+      "name": "OrchestratorOptions",
+      "kind": "interface",
+      "module": "src/orchestrator.ts",
+      "doc": "",
+      "signature": "export interface OrchestratorOptions {\r",
+      "members": [
+        {
+          "name": "config",
+          "type": "CompressConfig",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "callbacks",
+          "type": "CompressCallbacks",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "parseToolBlocks",
+      "kind": "function",
+      "module": "src/blocks.ts",
+      "doc": "解析会话中的全部 tool block。",
+      "signature": "(msgs: readonly Message[], countTokens: TokenCounter): ToolBlock[]"
+    },
+    {
+      "name": "PIN_REASON_PRIORITY",
+      "kind": "const",
+      "module": "src/contract.ts",
+      "doc": "pin 理由优先级（由高到低）。 同一内容命中多个识别信号时，只产生一条 pin 记录，reason 取优先级更高的那一种。",
+      "signature": "readonly PinReason[]",
+      "value": "[ 'tool-block-incomplete', 'system-prompt', 'user-constraint', 'permission-grant', 'deliverable-path', 'user-remember', …"
+    },
+    {
+      "name": "PinReason",
+      "kind": "type-alias",
+      "module": "src/contract.ts",
+      "doc": "pin 理由枚举。",
+      "signature": "| 'system-prompt'\n  /** 用户最新一轮的原始需求文本。 */\n  | 'latest-user-intent'\n  /**\n   * 用户提出的硬约束（「必须在原文件上原地修改，不要生成新版本」这类）。\n   * 契约 `pin-protection` 场景一要求这类内容被 pin 且逐字节不变，\n   * 但原枚举无对应取值，补此值以免出现「被 pin 但 reason 不属于枚举」的自相矛盾。\n   * 记为待确认项 Q6（见 todo.md §3）。\n   */\n  | 'user-constraint'\n  /** 用户消息含「记住」「以后都要」等持久性要求。 */\n  | 'user-remember'\n  /** 尚未被后续成功输出取代的关键报错行。 */\n  | 'error-critical'\n  /** 交付物绝对路径。 */\n  | 'deliverable-path'\n  /** 用户对高风险操作的批准记录。 */\n  | 'permission-grant'\n  /** 未完成的待办。 */\n  | 'open-todo'\n  /** tool block 配对不完整，铁律三强制 pin，任何级别都不参与压缩。 */\n  | 'tool-block-incomplete'",
+      "unionMembers": [
+        {
+          "value": "system-prompt",
+          "doc": "系统提示消息。"
+        },
+        {
+          "value": "latest-user-intent",
+          "doc": "用户最新一轮的原始需求文本。"
+        },
+        {
+          "value": "user-constraint",
+          "doc": "用户提出的硬约束（「必须在原文件上原地修改，不要生成新版本」这类）。 契约 `pin-protection` 场景一要求这类内容被 pin 且逐字节不变， 但原枚举无对应取值，补此值以免出现「被 pin 但 reason 不属于枚举」的自相矛盾。 记为待确认项 Q6（见 todo.md §3）。"
+        },
+        {
+          "value": "user-remember",
+          "doc": "用户消息含「记住」「以后都要」等持久性要求。"
+        },
+        {
+          "value": "error-critical",
+          "doc": "尚未被后续成功输出取代的关键报错行。"
+        },
+        {
+          "value": "deliverable-path",
+          "doc": "交付物绝对路径。"
+        },
+        {
+          "value": "permission-grant",
+          "doc": "用户对高风险操作的批准记录。"
+        },
+        {
+          "value": "open-todo",
+          "doc": "未完成的待办。"
+        },
+        {
+          "value": "tool-block-incomplete",
+          "doc": "tool block 配对不完整，铁律三强制 pin，任何级别都不参与压缩。"
+        }
+      ]
+    },
+    {
+      "name": "PinRecord",
+      "kind": "interface",
+      "module": "src/contract.ts",
+      "doc": "一条不可压缩区记录。",
+      "signature": "export interface PinRecord {",
+      "members": [
+        {
+          "name": "msgId",
+          "type": "string",
+          "optional": false,
+          "doc": "被保护的消息 ID。"
+        },
+        {
+          "name": "span",
+          "type": "readonly [number, number] | undefined",
+          "optional": true,
+          "doc": "受保护的字符区间 `[start, end)`。 局部 pin 时必填：只保护含关键信息的片段，span 之外的内容仍可下沉。"
+        },
+        {
+          "name": "reason",
+          "type": "PinReason",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "optional": false,
+          "doc": "被保护的文本内容，提交前断言会比对它是否逐字节在位。"
+        }
+      ]
+    },
+    {
+      "name": "PinResolveResult",
+      "kind": "interface",
+      "module": "src/pins.ts",
+      "doc": "pin 解析结果。",
+      "signature": "export interface PinResolveResult {",
+      "members": [
+        {
+          "name": "pins",
+          "type": "readonly PinRecord[]",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "degraded",
+          "type": "boolean",
+          "optional": false,
+          "doc": "是否因 onPreCompress 抛异常而退化为静态白名单。"
+        }
+      ]
+    },
+    {
+      "name": "RE_COMMAND",
+      "kind": "const",
+      "module": "src/patterns.ts",
+      "doc": "反引号包裹的命令与符号。",
+      "signature": "RegExp",
+      "value": "/`[^`\\n]+`/"
+    },
+    {
+      "name": "RE_HASH",
+      "kind": "const",
+      "module": "src/patterns.ts",
+      "doc": "commit hash 一类十六进制串（7–40 位）。",
+      "signature": "RegExp",
+      "value": "/\\b[0-9a-f]{7,40}\\b/"
+    },
+    {
+      "name": "RE_POSIX_PATH",
+      "kind": "const",
+      "module": "src/patterns.ts",
+      "doc": "POSIX 路径：至少两级，避免把单个 `/usr` 或除法算式误判为路径。",
+      "signature": "RegExp",
+      "value": "/(?:\\/[\\w.@-]+){2,}/"
+    },
+    {
+      "name": "RE_TODO_DONE",
+      "kind": "const",
+      "module": "src/patterns.ts",
+      "doc": "已完成待办：`- [x]`、`DONE:`、`已完成`。",
+      "signature": "RegExp",
+      "value": "/(?:^|\\n)\\s*(?:[-*]\\s*\\[[xX]\\]|DONE\\s*:|已完成\\s*[:：])[^\\n]*/"
+    },
+    {
+      "name": "RE_TODO_PENDING",
+      "kind": "const",
+      "module": "src/patterns.ts",
+      "doc": "未完成待办：`- [ ]`、`TODO:`、`待办：`。",
+      "signature": "RegExp",
+      "value": "/(?:^|\\n)\\s*(?:[-*]\\s*\\[\\s\\]|TODO\\s*:|待办\\s*[:：])[^\\n]*/"
+    },
+    {
+      "name": "RE_URL",
+      "kind": "const",
+      "module": "src/patterns.ts",
+      "doc": "URL。",
+      "signature": "RegExp",
+      "value": "/https?:\\/\\/[^\\s)\"'<>]+/"
+    },
+    {
+      "name": "RE_UUID",
+      "kind": "const",
+      "module": "src/patterns.ts",
+      "doc": "UUID。",
+      "signature": "RegExp",
+      "value": "/\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b/"
+    },
+    {
+      "name": "RE_WINDOWS_PATH",
+      "kind": "const",
+      "module": "src/patterns.ts",
+      "doc": "Windows 绝对路径：`D:\\Documents\\out\\报告.docx`。",
+      "signature": "RegExp",
+      "value": "/[A-Za-z]:\\\\(?:[^\\\\/:*?\"<>|\\r\\n]+\\\\)*[^\\\\/:*?\"<>|\\r\\n]*/"
+    },
+    {
+      "name": "resolveConfig",
+      "kind": "function",
+      "module": "src/config.ts",
+      "doc": "合并用户配置与默认值，并做区间校验。 非法配置在进入压缩流程前就失败，避免带着错误阈值静默运行。",
+      "signature": "(overrides?: Partial<CompressConfig>): CompressConfig"
+    },
+    {
+      "name": "resolvePins",
+      "kind": "function",
+      "module": "src/pins.ts",
+      "doc": "生成本轮全部 pin。",
+      "signature": "(state: ContextState, config: CompressConfig, hook?: ((state: ContextState, config: CompressConfig) => readonly PinRecord[]) | undefined): PinResolveResult"
+    },
+    {
+      "name": "Role",
+      "kind": "type-alias",
+      "module": "src/contract.ts",
+      "doc": "消息角色。与主流 Chat Completions / Messages API 对齐。",
+      "signature": "'system' | 'user' | 'assistant' | 'tool'",
+      "unionMembers": [
+        {
+          "value": "system",
+          "doc": ""
+        },
+        {
+          "value": "user",
+          "doc": ""
+        },
+        {
+          "value": "assistant",
+          "doc": ""
+        },
+        {
+          "value": "tool",
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "runFallbackChain",
+      "kind": "function",
+      "module": "src/fallback.ts",
+      "doc": "执行降级链。",
+      "signature": "(input: CompressInput, compress: ((input: CompressInput, signal: AbortSignal) => CompressOutput | Promise<CompressOutput>) | null, config: CompressConfig): Promise<...>"
+    },
+    {
+      "name": "Segment",
+      "kind": "interface",
+      "module": "src/contract.ts",
+      "doc": "待压缩的一个中部段。由完整 tool block 组成，切点只落在 block 之间。",
+      "signature": "export interface Segment {",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "startId",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "endId",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "msgIds",
+          "type": "readonly string[]",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "blockIds",
+          "type": "readonly string[]",
+          "optional": false,
+          "doc": "该段包含的 tool block ID。"
+        },
+        {
+          "name": "tokens",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "segmentsAreSafe",
+      "kind": "function",
+      "module": "src/blocks.ts",
+      "doc": "校验切割结果：任一段的首尾都必须是完整 block。提交前断言会用到。",
+      "signature": "(segments: readonly Segment[], blocks: readonly ToolBlock[]): boolean"
+    },
+    {
+      "name": "selectSegment",
+      "kind": "function",
+      "module": "src/blocks.ts",
+      "doc": "默认中部段切割。",
+      "signature": "(state: ContextState, config: CompressConfig): Segment[]"
+    },
+    {
+      "name": "shouldCompress",
+      "kind": "function",
+      "module": "src/trigger.ts",
+      "doc": "触发判定。顺序即优先级，全部阈值来自配置注入。",
+      "signature": "(ctx: TriggerContext, space?: SimilaritySpace | undefined): TriggerDecision"
+    },
+    {
+      "name": "SimilaritySpace",
+      "kind": "interface",
+      "module": "src/gain.ts",
+      "doc": "向量化能力的最小接口。TF-IDF 与 embedding 两种实现都满足它。",
+      "signature": "export interface SimilaritySpace {",
+      "members": [
+        {
+          "name": "vectorize",
+          "type": "(text: string) => readonly number[]",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "cosine",
+          "type": "(a: readonly number[], b: readonly number[]) => number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "addDocument",
+          "type": "((text: string) => void) | undefined",
+          "optional": true,
+          "doc": "登记语料参与 IDF 统计。embedding 实现无需此步。"
+        }
+      ]
+    },
+    {
+      "name": "SOFT_ENTITY_PATTERNS",
+      "kind": "const",
+      "module": "src/patterns.ts",
+      "doc": "软实体类别 → 正则。",
+      "signature": "Readonly<Record<'number-percent' | 'person-name', RegExp>>",
+      "value": "{ 'number-percent': /-?\\d+(?:\\.\\d+)?%/, 'person-name': /[A-Z][a-z]+(?:\\s+[A-Z][a-z]+){1,2}/, }"
+    },
+    {
+      "name": "SourceSpan",
+      "kind": "interface",
+      "module": "src/contract.ts",
+      "doc": "指向原始消息区间的指针。 铁律一要求它永远指向 L0 原文的消息 ID，而非某个摘要块。",
+      "signature": "export interface SourceSpan {",
+      "members": [
+        {
+          "name": "startId",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "endId",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "msgCount",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "splitTokens",
+      "kind": "function",
+      "module": "src/signals.ts",
+      "doc": "分词。路径、URL、UUID、命令、哈希作为整体 token； 其余文本按 CJK bigram + 拉丁词切分。确定性输出。",
+      "signature": "(text: string): string[]"
+    },
+    {
+      "name": "SummarySlots",
+      "kind": "interface",
+      "module": "src/callbacks.ts",
+      "doc": "L2 分槽位摘要（§5）。",
+      "signature": "export interface SummarySlots {",
+      "members": [
+        {
+          "name": "constraints",
+          "type": "readonly string[]",
+          "optional": false,
+          "doc": "用户硬约束，逐字摘抄。"
+        },
+        {
+          "name": "artifacts",
+          "type": "readonly string[]",
+          "optional": false,
+          "doc": "交付物路径与标识，逐字摘抄。"
+        },
+        {
+          "name": "todos",
+          "type": "readonly string[]",
+          "optional": false,
+          "doc": "待办项，逐字摘抄。"
+        },
+        {
+          "name": "narrative",
+          "type": "string",
+          "optional": false,
+          "doc": "叙述性摘要，允许改写。"
+        }
+      ]
+    },
+    {
+      "name": "TokenCounter",
+      "kind": "type-alias",
+      "module": "src/config.ts",
+      "doc": "token 计数钩子。宿主环境可提供真实 tokenizer；缺省走内置估算。",
+      "signature": "(text: string) => number"
+    },
+    {
+      "name": "ToolBlock",
+      "kind": "interface",
+      "module": "src/contract.ts",
+      "doc": "一个 tool block：一条发起工具调用的 assistant 消息 + 其全部 tool result。",
+      "signature": "export interface ToolBlock {",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "startId",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "endId",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "msgIds",
+          "type": "readonly string[]",
+          "optional": false,
+          "doc": "组成该 block 的全部消息 ID，保持原始到达顺序，不重排。"
+        },
+        {
+          "name": "complete",
+          "type": "boolean",
+          "optional": false,
+          "doc": "全部 tool_use 都已收到对应 result。"
+        },
+        {
+          "name": "missing",
+          "type": "readonly string[]",
+          "optional": false,
+          "doc": "未收到 result 的 tool_use 标识列表。"
+        },
+        {
+          "name": "malformed",
+          "type": "boolean",
+          "optional": false,
+          "doc": "畸形块：孤儿 result、被下一条 assistant 工具调用截断、或其他无法配对的形态。"
+        },
+        {
+          "name": "tokens",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "ToolCall",
+      "kind": "interface",
+      "module": "src/contract.ts",
+      "doc": "assistant 发起的一次工具调用。",
+      "signature": "export interface ToolCall {",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": "工具调用唯一标识，与后续 tool result 的 `toolCallId` 配对。"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "optional": false,
+          "doc": "工具名。"
+        },
+        {
+          "name": "args",
+          "type": "unknown",
+          "optional": true,
+          "doc": "调用参数（保留原始结构，不做序列化假设）。"
+        }
+      ]
+    },
+    {
+      "name": "totalTokens",
+      "kind": "function",
+      "module": "src/blocks.ts",
+      "doc": "一批消息的总 token 数。",
+      "signature": "(msgs: readonly Message[], countTokens: TokenCounter): number"
+    },
+    {
+      "name": "TriggerContext",
+      "kind": "interface",
+      "module": "src/trigger.ts",
+      "doc": "判定上下文。上次压缩的状态由调用方（编排层）维护。",
+      "signature": "export interface TriggerContext {\r",
+      "members": [
+        {
+          "name": "state",
+          "type": "ContextState",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "config",
+          "type": "CompressConfig",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "turnsSinceLastCompress",
+          "type": "number",
+          "optional": false,
+          "doc": "距上次成功压缩经历的对话轮数（无历史记 Infinity）。"
+        },
+        {
+          "name": "justCompressed",
+          "type": "boolean",
+          "optional": false,
+          "doc": "上一轮是否刚完成压缩（迟滞带与「压缩后落定」判定用）。"
+        }
+      ]
+    },
+    {
+      "name": "TriggerDecision",
+      "kind": "interface",
+      "module": "src/contract.ts",
+      "doc": "触发判定结果。",
+      "signature": "export interface TriggerDecision {",
+      "members": [
+        {
+          "name": "compress",
+          "type": "boolean",
+          "optional": false,
+          "doc": "是否执行压缩。"
+        },
+        {
+          "name": "reason",
+          "type": "TriggerReason",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "cutPointId",
+          "type": "string | undefined",
+          "optional": true,
+          "doc": "命中任务边界时的切点消息 ID。"
+        },
+        {
+          "name": "boundaryType",
+          "type": "BoundaryType | undefined",
+          "optional": true,
+          "doc": "命中任务边界时的边界类型。"
+        },
+        {
+          "name": "forced",
+          "type": "boolean",
+          "optional": false,
+          "doc": "是否为强制压缩（无边界且超等待上限）。"
+        },
+        {
+          "name": "epoch",
+          "type": "number",
+          "optional": false,
+          "doc": "本轮 epoch 快照。"
+        }
+      ]
+    },
+    {
+      "name": "TriggerReason",
+      "kind": "type-alias",
+      "module": "src/contract.ts",
+      "doc": "触发决策原因。",
+      "signature": "| 'below-trigger'\n  /** 落在迟滞带内，防抖动。 */\n  | 'hysteresis-band'\n  /** 命中任务边界。 */\n  | 'task-boundary'\n  /** 无边界但超过等待上限，强制压缩。 */\n  | 'forced'\n  /** 距上次压缩的轮数小于频率下限。 */\n  | 'rate-limit'\n  /** 压缩后占用已落到目标线以下。 */\n  | 'post-compress-settled'\n  /** 找不到安全切点，放弃本轮。 */\n  | 'no-safe-cut'\n  /** 触发钩子抛异常，保守地不压缩。 */\n  | 'hook-error'\n  /** 占用超线但仍在等待任务边界，且未超等待上限。 */\n  | 'waiting-boundary'",
+      "unionMembers": [
+        {
+          "value": "below-trigger",
+          "doc": "占用低于触发线。"
+        },
+        {
+          "value": "hysteresis-band",
+          "doc": "落在迟滞带内，防抖动。"
+        },
+        {
+          "value": "task-boundary",
+          "doc": "命中任务边界。"
+        },
+        {
+          "value": "forced",
+          "doc": "无边界但超过等待上限，强制压缩。"
+        },
+        {
+          "value": "rate-limit",
+          "doc": "距上次压缩的轮数小于频率下限。"
+        },
+        {
+          "value": "post-compress-settled",
+          "doc": "压缩后占用已落到目标线以下。"
+        },
+        {
+          "value": "no-safe-cut",
+          "doc": "找不到安全切点，放弃本轮。"
+        },
+        {
+          "value": "hook-error",
+          "doc": "触发钩子抛异常，保守地不压缩。"
+        },
+        {
+          "value": "waiting-boundary",
+          "doc": "占用超线但仍在等待任务边界，且未超等待上限。"
+        }
+      ]
+    },
+    {
+      "name": "VectorSpace",
+      "kind": "interface",
+      "module": "src/signals.ts",
+      "doc": "向量空间：收集语料后按 TF-IDF 计算文本向量。",
+      "signature": "export interface VectorSpace {",
+      "members": [
+        {
+          "name": "addDocument",
+          "type": "(text: string) => void",
+          "optional": false,
+          "doc": "登记一篇文档参与 IDF 统计。重复文本按多次文档计。"
+        },
+        {
+          "name": "vectorize",
+          "type": "(text: string) => readonly number[]",
+          "optional": false,
+          "doc": "计算文本的 TF-IDF 向量（词表维度，稀疏为零）。"
+        },
+        {
+          "name": "cosine",
+          "type": "(a: readonly number[], b: readonly number[]) => number",
+          "optional": false,
+          "doc": "余弦相似度，零向量返回 0。"
+        },
+        {
+          "name": "vocabularySize",
+          "type": "() => number",
+          "optional": false,
+          "doc": "当前词表大小。"
+        },
+        {
+          "name": "documentCount",
+          "type": "() => number",
+          "optional": false,
+          "doc": "已登记文档数。"
+        }
+      ]
+    },
+    {
+      "name": "Vendor",
+      "kind": "type-alias",
+      "module": "src/contract.ts",
+      "doc": "消息来源厂商标记。 归档时需要保存它，rehydrate 才能把原文还原成首次进入会话时的 API 格式。",
+      "signature": "'anthropic' | 'openai' | 'generic'",
+      "unionMembers": [
+        {
+          "value": "anthropic",
+          "doc": ""
+        },
+        {
+          "value": "openai",
+          "doc": ""
+        },
+        {
+          "value": "generic",
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "verifyEntities",
+      "kind": "function",
+      "module": "src/verify.ts",
+      "doc": "正则实体校验。",
+      "signature": "(original: string, summary: string, config: CompressConfig): VerifyReport"
+    },
+    {
+      "name": "verifyHardSlots",
+      "kind": "function",
+      "module": "src/levels/l2.ts",
+      "doc": "硬槽位逐字校验：constraints、artifacts、todos 的每条取值都必须能在原文中逐字定位。 返回无法定位的取值列表；为空即通过。",
+      "signature": "(slots: SummarySlots, original: string): readonly string[]"
+    },
+    {
+      "name": "VerifyInput",
+      "kind": "interface",
+      "module": "src/callbacks.ts",
+      "doc": "verify 钩子的入参。",
+      "signature": "export interface VerifyInput {",
+      "members": [
+        {
+          "name": "original",
+          "type": "string",
+          "optional": false,
+          "doc": "原文文本。"
+        },
+        {
+          "name": "summary",
+          "type": "string",
+          "optional": false,
+          "doc": "待校验的摘要文本。"
+        },
+        {
+          "name": "level",
+          "type": "CompressLevel",
+          "optional": false,
+          "doc": "摘要所属级别。"
+        },
+        {
+          "name": "config",
+          "type": "CompressConfig",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "VerifyReport",
+      "kind": "interface",
+      "module": "src/contract.ts",
+      "doc": "实体校验报告。",
+      "signature": "export interface VerifyReport {",
+      "members": [
+        {
+          "name": "passed",
+          "type": "boolean",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "entityRetain",
+          "type": "Readonly<Record<EntityCategory, number>>",
+          "optional": false,
+          "doc": "每一类实体的独立保留率，供事后审计而非只给总体布尔值。"
+        },
+        {
+          "name": "missing",
+          "type": "readonly string[]",
+          "optional": false,
+          "doc": "缺失的具体实体值，便于定位。"
+        },
+        {
+          "name": "hookError",
+          "type": "boolean",
+          "optional": false,
+          "doc": "校验器自身抛异常时为 true —— 必须视为不通过而非放行。"
+        },
+        {
+          "name": "warnings",
+          "type": "readonly string[]",
+          "optional": false,
+          "doc": "软实体未达阈值时的处置记录，不静默忽略。"
+        },
+        {
+          "name": "qa",
+          "type": "readonly SlotQuestion[] | undefined",
+          "optional": true,
+          "doc": "§8.3 进阶问答的题目；仅 advancedVerifyEnabled 开启且有槽位时非空。"
+        }
+      ]
+    },
+    {
+      "name": "verifySummary",
+      "kind": "function",
+      "module": "src/verify.ts",
+      "doc": "完整校验入口：先跑硬槽位逐字定位（有槽位时），再跑正则实体校验； 进阶问答开关开启时追加 §8.3 问答校验。 三者任一不通过即整体不通过。",
+      "signature": "(original: string, summary: string, slots: { constraints: readonly string[]; artifacts: readonly string[]; todos: readonly string[]; } | null, config: CompressConfig): VerifyReport"
+    },
+    {
+      "name": "WarningHook",
+      "kind": "type-alias",
+      "module": "src/config.ts",
+      "doc": "告警回调。用于 pin_hook_degraded、archive-unavailable 等可观测降级信号。",
+      "signature": "(warning: string, details?: Record<string, unknown>) => void"
+    }
+  ]
+}
