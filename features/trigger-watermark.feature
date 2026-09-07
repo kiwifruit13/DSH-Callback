@@ -89,3 +89,21 @@ Feature: 触发策略与 prompt cache 友好性
     Then 仅首次超线触发压缩
     And 后续调用因频率下限被抑制
     And 全轮 epoch 递增次数为 1
+
+  # R5-1 回归：defaultShouldCompress 是公共导出（README 推荐宿主包装使用），
+  # 其 topic-shift 语料空间必须由会话用户消息真实构建。空语料空间下任意文本
+  # 向量恒为零，cosine 恒 0 低于阈值，会对每对相邻用户消息假阳性触发
+  # topic-shift（原缺陷：P1-4 只修了编排器内置路径，公共导出残留）。
+  Scenario: 默认触发判定对相邻相似消息不误报 topic-shift
+    Given 当前 token 占用率高于触发线
+    And 相邻两条用户消息围绕同一主题高度相关
+    When 直接调用公共导出的 defaultShouldCompress
+    Then 不得因 topic-shift 假阳性触发压缩
+
+  Scenario: 默认触发判定对真实的相邻话题切换如实检出
+    Given 当前 token 占用率高于触发线
+    And 相邻两条用户消息分属完全无关的话题
+    When 直接调用公共导出的 defaultShouldCompress
+    Then 返回压缩决策且切点落在该边界信号处
+    And 决策原因记为 task-boundary
+    And 边界类型记为 topic-shift

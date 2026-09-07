@@ -8,7 +8,7 @@
       "kind": "interface",
       "module": "src/archive.ts",
       "doc": "归档存储门面。",
-      "signature": "export interface Archive {",
+      "signature": "export interface Archive {\r",
       "members": [
         {
           "name": "isAvailable",
@@ -92,7 +92,7 @@
       "kind": "interface",
       "module": "src/config.ts",
       "doc": "归档记录。JSONL 追加文件的一行。 保存 raw 与 vendor 是为了 rehydrate 能无损还原为首次进入会话时的 API 格式。",
-      "signature": "export interface ArchiveRecord {",
+      "signature": "export interface ArchiveRecord {\r",
       "members": [
         {
           "name": "ref",
@@ -131,7 +131,7 @@
       "kind": "interface",
       "module": "src/contract.ts",
       "doc": "归档指针。凭它可经 rehydrate 取回逐字原文。",
-      "signature": "export interface ArchiveRef {",
+      "signature": "export interface ArchiveRef {\r",
       "members": [
         {
           "name": "ref",
@@ -158,7 +158,7 @@
       "kind": "interface",
       "module": "src/config.ts",
       "doc": "归档存储抽象。",
-      "signature": "export interface ArchiveSink {",
+      "signature": "export interface ArchiveSink {\r",
       "members": [
         {
           "name": "append",
@@ -243,7 +243,7 @@
       "kind": "interface",
       "module": "src/gain.ts",
       "doc": "",
-      "signature": "export interface AssignBudgetInput {",
+      "signature": "export interface AssignBudgetInput {\r",
       "members": [
         {
           "name": "segments",
@@ -303,7 +303,7 @@
       "kind": "type-alias",
       "module": "src/contract.ts",
       "doc": "任务边界类型。切点优先落在这类边界上。",
-      "signature": "| 'todo-transition'\n  /** 一段连续工具调用序列终止且后续为纯文本。 */\n  | 'tool-seq-end'\n  /** 助手输出了交付总结且用户随后发起新话题。 */\n  | 'delivery-summary'\n  /** 用户新消息与前一话题的增益相关性低于阈值。 */\n  | 'topic-shift'",
+      "signature": "| 'todo-transition'\r\n  /** 一段连续工具调用序列终止且后续为纯文本。 */\r\n  | 'tool-seq-end'\r\n  /** 助手输出了交付总结且用户随后发起新话题。 */\r\n  | 'delivery-summary'\r\n  /** 用户新消息与前一话题的增益相关性低于阈值。 */\r\n  | 'topic-shift'",
       "unionMembers": [
         {
           "value": "todo-transition",
@@ -328,7 +328,7 @@
       "kind": "interface",
       "module": "src/contract.ts",
       "doc": "单个段的预算分配结果。",
-      "signature": "export interface BudgetAssignment {",
+      "signature": "export interface BudgetAssignment {\r",
       "members": [
         {
           "name": "segmentId",
@@ -373,7 +373,7 @@
       "kind": "interface",
       "module": "src/contract.ts",
       "doc": "prompt cache 影响。稳定前缀是避免 cache 全 miss 的关键（§7.2）。",
-      "signature": "export interface CacheImpact {",
+      "signature": "export interface CacheImpact {\r",
       "members": [
         {
           "name": "prefixStable",
@@ -445,7 +445,7 @@
       "kind": "interface",
       "module": "src/callbacks.ts",
       "doc": "六个可注入钩子。除 compress（必填）外全部可选：shouldCompress 缺省走编排器内置路径，其余缺省走 DEFAULT_CALLBACKS。",
-      "signature": "export interface CompressCallbacks {",
+      "signature": "export interface CompressCallbacks {\r",
       "members": [
         {
           "name": "shouldCompress",
@@ -490,7 +490,7 @@
       "kind": "interface",
       "module": "src/config.ts",
       "doc": "压缩配置。全部阈值集中于此，源码其余位置不得出现待标定数字。",
-      "signature": "export interface CompressConfig {",
+      "signature": "export interface CompressConfig {\r",
       "members": [
         {
           "name": "triggerRatio",
@@ -661,7 +661,7 @@
       "kind": "interface",
       "module": "src/contract.ts",
       "doc": "压缩产物。",
-      "signature": "export interface CompressedBlock {",
+      "signature": "export interface CompressedBlock {\r",
       "members": [
         {
           "name": "id",
@@ -775,7 +775,7 @@
       "kind": "type-alias",
       "module": "src/contract.ts",
       "doc": "压缩错误码。",
-      "signature": "| 'no-compression-possible'\n  /** 归档内容哈希不一致。 */\n  | 'archive-corrupted'\n  /** 归档不可用，禁止有损下沉。 */\n  | 'archive-unavailable'\n  /** 用户钩子抛异常。 */\n  | 'hook-error'\n  /** 提交前断言失败，整体回滚。 */\n  | 'commit-assert-failed'\n  /** 提交前断言失败的具体项。 */\n  | 'verify-failed'",
+      "signature": "| 'no-compression-possible'\r\n  /** 归档内容哈希不一致。 */\r\n  | 'archive-corrupted'\r\n  /** 归档不可用，禁止有损下沉。 */\r\n  | 'archive-unavailable'\r\n  /** 用户钩子抛异常。 */\r\n  | 'hook-error'\r\n  /** 提交前断言失败，整体回滚。 */\r\n  | 'commit-assert-failed'\r\n  /** 提交前断言失败的具体项。 */\r\n  | 'verify-failed'",
       "unionMembers": [
         {
           "value": "no-compression-possible",
@@ -808,7 +808,7 @@
       "kind": "interface",
       "module": "src/callbacks.ts",
       "doc": "compress 钩子的入参。",
-      "signature": "export interface CompressInput {",
+      "signature": "export interface CompressInput {\r",
       "members": [
         {
           "name": "text",
@@ -860,7 +860,7 @@
       "kind": "type-alias",
       "module": "src/contract.ts",
       "doc": "压缩产出的实际方法。 该标记必须随报告落盘，用于事后判定该段上下文的可信度（§9.1）。",
-      "signature": "| 'llm'\n  /** 降级为规则抽取式。 */\n  | 'heuristic'\n  /** 降级为硬截断。 */\n  | 'truncate'\n  /** 未压缩（纯保留或 pin 段）。 */\n  | 'none'",
+      "signature": "| 'llm'\r\n  /** 降级为规则抽取式。 */\r\n  | 'heuristic'\r\n  /** 降级为硬截断。 */\r\n  | 'truncate'\r\n  /** 未压缩（纯保留或 pin 段）。 */\r\n  | 'none'",
       "unionMembers": [
         {
           "value": "llm",
@@ -885,7 +885,7 @@
       "kind": "interface",
       "module": "src/callbacks.ts",
       "doc": "compress 钩子的出参。",
-      "signature": "export interface CompressOutput {",
+      "signature": "export interface CompressOutput {\r",
       "members": [
         {
           "name": "text",
@@ -939,7 +939,7 @@
       "kind": "interface",
       "module": "src/api.ts",
       "doc": "压缩器实例。",
-      "signature": "export interface ContextCompressor {",
+      "signature": "export interface ContextCompressor {\r",
       "members": [
         {
           "name": "maybeCompress",
@@ -972,7 +972,7 @@
       "kind": "interface",
       "module": "src/contract.ts",
       "doc": "上下文状态。 `msgs` 以不可变数组持有，压缩采用「构造 next_msgs → 断言 → 整体替换」的提交方式， 中途失败则引用与内容逐字节保持原样（§9.2 原子性）。",
-      "signature": "export interface ContextState {",
+      "signature": "export interface ContextState {\r",
       "members": [
         {
           "name": "msgs",
@@ -1037,7 +1037,7 @@
       "kind": "interface",
       "module": "src/api.ts",
       "doc": "",
-      "signature": "export interface CreateCompressorOptions {",
+      "signature": "export interface CreateCompressorOptions {\r",
       "members": [
         {
           "name": "config",
@@ -1173,7 +1173,7 @@
       "kind": "type-alias",
       "module": "src/contract.ts",
       "doc": "受校验的实体类别。",
-      "signature": "| 'windows-path'\n  /** 硬实体：POSIX 路径。 */\n  | 'posix-path'\n  /** 硬实体：URL。 */\n  | 'url'\n  /** 硬实体：UUID 或 commit hash。 */\n  | 'uuid-or-hash'\n  /** 硬实体：反引号包裹的命令与符号。 */\n  | 'command-symbol'\n  /** 软实体：数值与百分比。 */\n  | 'number-percent'\n  /** 软实体：人名与专名。 */\n  | 'person-name'",
+      "signature": "| 'windows-path'\r\n  /** 硬实体：POSIX 路径。 */\r\n  | 'posix-path'\r\n  /** 硬实体：URL。 */\r\n  | 'url'\r\n  /** 硬实体：UUID 或 commit hash。 */\r\n  | 'uuid-or-hash'\r\n  /** 硬实体：反引号包裹的命令与符号。 */\r\n  | 'command-symbol'\r\n  /** 软实体：数值与百分比。 */\r\n  | 'number-percent'\r\n  /** 软实体：人名与专名。 */\r\n  | 'person-name'",
       "unionMembers": [
         {
           "value": "windows-path",
@@ -1210,7 +1210,7 @@
       "kind": "interface",
       "module": "src/callbacks.ts",
       "doc": "错误上下文。",
-      "signature": "export interface ErrorContext {",
+      "signature": "export interface ErrorContext {\r",
       "members": [
         {
           "name": "hook",
@@ -1251,7 +1251,7 @@
       "kind": "interface",
       "module": "src/fallback.ts",
       "doc": "",
-      "signature": "export interface FallbackResult {",
+      "signature": "export interface FallbackResult {\r",
       "members": [
         {
           "name": "output",
@@ -1308,7 +1308,7 @@
       "kind": "interface",
       "module": "src/callbacks.ts",
       "doc": "参与逐字校验的**硬槽位**取值集合（P0-3 引入的校验入参形状）。",
-      "signature": "export interface HardSlots {",
+      "signature": "export interface HardSlots {\r",
       "members": [
         {
           "name": "constraints",
@@ -1400,7 +1400,7 @@
       "kind": "interface",
       "module": "src/callbacks.ts",
       "doc": "幂等键。四元组 (startId, endId, level, epoch)。 相同幂等键重复请求必须复用缓存结果，避免重复消耗 LLM 调用与缓存抖动。",
-      "signature": "export interface IdempotencyKey {",
+      "signature": "export interface IdempotencyKey {\r",
       "members": [
         {
           "name": "startId",
@@ -1520,7 +1520,7 @@
       "kind": "interface",
       "module": "src/levels/l1.ts",
       "doc": "",
-      "signature": "export interface L1Result {",
+      "signature": "export interface L1Result {\r",
       "members": [
         {
           "name": "text",
@@ -1555,7 +1555,7 @@
       "kind": "interface",
       "module": "src/patterns.ts",
       "doc": "一次正则匹配结果，带字符区间，供 span pin 使用。",
-      "signature": "export interface Match {",
+      "signature": "export interface Match {\r",
       "members": [
         {
           "name": "value",
@@ -1634,7 +1634,7 @@
       "kind": "interface",
       "module": "src/contract.ts",
       "doc": "会话中的一条消息。",
-      "signature": "export interface Message {",
+      "signature": "export interface Message {\r",
       "members": [
         {
           "name": "id",
@@ -1750,7 +1750,7 @@
       "kind": "interface",
       "module": "src/contract.ts",
       "doc": "一轮压缩的观测记录。以回调或事件形式暴露，不绑定任何特定监控实现。",
-      "signature": "export interface ObservationRecord {",
+      "signature": "export interface ObservationRecord {\r",
       "members": [
         {
           "name": "epoch",
@@ -1894,7 +1894,7 @@
       "kind": "type-alias",
       "module": "src/contract.ts",
       "doc": "pin 理由枚举。",
-      "signature": "| 'system-prompt'\n  /** 用户最新一轮的原始需求文本。 */\n  | 'latest-user-intent'\n  /**\n   * 用户提出的硬约束（「必须在原文件上原地修改，不要生成新版本」这类）。\n   * 契约 `pin-protection` 场景一要求这类内容被 pin 且逐字节不变，\n   * 但原枚举无对应取值，补此值以免出现「被 pin 但 reason 不属于枚举」的自相矛盾。\n   * 记为待确认项 Q6（见 todo.md §3）。\n   */\n  | 'user-constraint'\n  /** 用户消息含「记住」「以后都要」等持久性要求。 */\n  | 'user-remember'\n  /** 尚未被后续成功输出取代的关键报错行。 */\n  | 'error-critical'\n  /** 交付物绝对路径。 */\n  | 'deliverable-path'\n  /** 用户对高风险操作的批准记录。 */\n  | 'permission-grant'\n  /** 未完成的待办。 */\n  | 'open-todo'\n  /** tool block 配对不完整，铁律三强制 pin，任何级别都不参与压缩。 */\n  | 'tool-block-incomplete'",
+      "signature": "| 'system-prompt'\r\n  /** 用户最新一轮的原始需求文本。 */\r\n  | 'latest-user-intent'\r\n  /**\r\n   * 用户提出的硬约束（「必须在原文件上原地修改，不要生成新版本」这类）。\r\n   * 契约 `pin-protection` 场景一要求这类内容被 pin 且逐字节不变，\r\n   * 但原枚举无对应取值，补此值以免出现「被 pin 但 reason 不属于枚举」的自相矛盾。\r\n   * 记为待确认项 Q6（见 todo.md §3）。\r\n   */\r\n  | 'user-constraint'\r\n  /** 用户消息含「记住」「以后都要」等持久性要求。 */\r\n  | 'user-remember'\r\n  /** 尚未被后续成功输出取代的关键报错行。 */\r\n  | 'error-critical'\r\n  /** 交付物绝对路径。 */\r\n  | 'deliverable-path'\r\n  /** 用户对高风险操作的批准记录。 */\r\n  | 'permission-grant'\r\n  /** 未完成的待办。 */\r\n  | 'open-todo'\r\n  /** tool block 配对不完整，铁律三强制 pin，任何级别都不参与压缩。 */\r\n  | 'tool-block-incomplete'",
       "unionMembers": [
         {
           "value": "system-prompt",
@@ -1939,7 +1939,7 @@
       "kind": "interface",
       "module": "src/contract.ts",
       "doc": "一条不可压缩区记录。",
-      "signature": "export interface PinRecord {",
+      "signature": "export interface PinRecord {\r",
       "members": [
         {
           "name": "msgId",
@@ -1972,7 +1972,7 @@
       "kind": "interface",
       "module": "src/pins.ts",
       "doc": "pin 解析结果。",
-      "signature": "export interface PinResolveResult {",
+      "signature": "export interface PinResolveResult {\r",
       "members": [
         {
           "name": "pins",
@@ -2103,7 +2103,7 @@
       "kind": "interface",
       "module": "src/contract.ts",
       "doc": "待压缩的一个中部段。由完整 tool block 组成，切点只落在 block 之间。",
-      "signature": "export interface Segment {",
+      "signature": "export interface Segment {\r",
       "members": [
         {
           "name": "id",
@@ -2169,7 +2169,7 @@
       "kind": "interface",
       "module": "src/gain.ts",
       "doc": "向量化能力的最小接口。TF-IDF 与 embedding 两种实现都满足它。",
-      "signature": "export interface SimilaritySpace {",
+      "signature": "export interface SimilaritySpace {\r",
       "members": [
         {
           "name": "vectorize",
@@ -2204,7 +2204,7 @@
       "kind": "interface",
       "module": "src/contract.ts",
       "doc": "指向原始消息区间的指针。 铁律一要求它永远指向 L0 原文的消息 ID，而非某个摘要块。",
-      "signature": "export interface SourceSpan {",
+      "signature": "export interface SourceSpan {\r",
       "members": [
         {
           "name": "startId",
@@ -2238,7 +2238,7 @@
       "kind": "interface",
       "module": "src/callbacks.ts",
       "doc": "L2 分槽位摘要（§5）。",
-      "signature": "export interface SummarySlots {",
+      "signature": "export interface SummarySlots {\r",
       "members": [
         {
           "name": "constraints",
@@ -2278,7 +2278,7 @@
       "kind": "interface",
       "module": "src/contract.ts",
       "doc": "一个 tool block：一条发起工具调用的 assistant 消息 + 其全部 tool result。",
-      "signature": "export interface ToolBlock {",
+      "signature": "export interface ToolBlock {\r",
       "members": [
         {
           "name": "id",
@@ -2335,7 +2335,7 @@
       "kind": "interface",
       "module": "src/contract.ts",
       "doc": "assistant 发起的一次工具调用。",
-      "signature": "export interface ToolCall {",
+      "signature": "export interface ToolCall {\r",
       "members": [
         {
           "name": "id",
@@ -2402,7 +2402,7 @@
       "kind": "interface",
       "module": "src/contract.ts",
       "doc": "触发判定结果。",
-      "signature": "export interface TriggerDecision {",
+      "signature": "export interface TriggerDecision {\r",
       "members": [
         {
           "name": "compress",
@@ -2447,7 +2447,7 @@
       "kind": "type-alias",
       "module": "src/contract.ts",
       "doc": "触发决策原因。",
-      "signature": "| 'below-trigger'\n  /** 落在迟滞带内，防抖动。 */\n  | 'hysteresis-band'\n  /** 命中任务边界。 */\n  | 'task-boundary'\n  /** 无边界但超过等待上限，强制压缩。 */\n  | 'forced'\n  /** 距上次压缩的轮数小于频率下限。 */\n  | 'rate-limit'\n  /** 压缩后占用已落到目标线以下。 */\n  | 'post-compress-settled'\n  /** 找不到安全切点，放弃本轮。 */\n  | 'no-safe-cut'\n  /** 触发钩子抛异常，保守地不压缩。 */\n  | 'hook-error'\n  /** 占用超线但仍在等待任务边界，且未超等待上限。 */\n  | 'waiting-boundary'\n  /**\n   * 宿主以布尔形式返回 shouldCompress（R5-8）：库无法得知真实原因，\n   * 如实标注为宿主决策，不伪造 task-boundary（该原因要求携带 cutPointId）。\n   */\n  | 'host-decision'",
+      "signature": "| 'below-trigger'\r\n  /** 落在迟滞带内，防抖动。 */\r\n  | 'hysteresis-band'\r\n  /** 命中任务边界。 */\r\n  | 'task-boundary'\r\n  /** 无边界但超过等待上限，强制压缩。 */\r\n  | 'forced'\r\n  /** 距上次压缩的轮数小于频率下限。 */\r\n  | 'rate-limit'\r\n  /** 压缩后占用已落到目标线以下。 */\r\n  | 'post-compress-settled'\r\n  /** 找不到安全切点，放弃本轮。 */\r\n  | 'no-safe-cut'\r\n  /** 触发钩子抛异常，保守地不压缩。 */\r\n  | 'hook-error'\r\n  /** 占用超线但仍在等待任务边界，且未超等待上限。 */\r\n  | 'waiting-boundary'\r\n  /**\r\n   * 宿主以布尔形式返回 shouldCompress（R5-8）：库无法得知真实原因，\r\n   * 如实标注为宿主决策，不伪造 task-boundary（该原因要求携带 cutPointId）。\r\n   */\r\n  | 'host-decision'",
       "unionMembers": [
         {
           "value": "below-trigger",
@@ -2496,7 +2496,7 @@
       "kind": "interface",
       "module": "src/signals.ts",
       "doc": "向量空间：收集语料后按 TF-IDF 计算文本向量。",
-      "signature": "export interface VectorSpace {",
+      "signature": "export interface VectorSpace {\r",
       "members": [
         {
           "name": "addDocument",
@@ -2570,7 +2570,7 @@
       "kind": "interface",
       "module": "src/callbacks.ts",
       "doc": "verify 钩子的入参。",
-      "signature": "export interface VerifyInput {",
+      "signature": "export interface VerifyInput {\r",
       "members": [
         {
           "name": "original",
@@ -2609,7 +2609,7 @@
       "kind": "interface",
       "module": "src/contract.ts",
       "doc": "实体校验报告。",
-      "signature": "export interface VerifyReport {",
+      "signature": "export interface VerifyReport {\r",
       "members": [
         {
           "name": "passed",

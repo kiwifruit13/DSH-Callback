@@ -7,6 +7,7 @@ import { HistoryBuilder } from '../fixtures.js';
 import { auditedGoodCompress } from './shared.steps.js';
 import { createVectorSpace } from '../../../src/signals.js';
 import { shouldCompress } from '../../../src/trigger.js';
+import { defaultShouldCompress } from '../../../src/defaults.js';
 import type { Message } from '../../../src/contract.js';
 
 const BOUNDARY_TYPE_OF: Record<string, string> = {
@@ -369,4 +370,50 @@ Then('全轮 epoch 递增次数为 1', function (this: CompressWorld) {
   // 触发层不提交：本轮 epoch 快照全部一致，真实提交由编排层单次完成
   const log = this.decisionLog ?? [];
   assert.ok(log.every((d) => d.epoch === this.state?.epoch));
+});
+
+/* ---- Scenario: defaultShouldCompress 直接单测（R5-1 回归）----
+ * 不经 evaluateTrigger（它自建语料空间），直接调用公共导出 defaultShouldCompress，
+ * 锁定其内部语料空间构建行为：相似消息不误报、无关消息如实检出。 */
+
+Given('相邻两条用户消息围绕同一主题高度相关', function (this: CompressWorld) {
+  const msgs = new HistoryBuilder()
+    .system()
+    .user('讨论数据库索引优化方案')
+    .user('继续讨论数据库索引优化方案的执行细节')
+    .build();
+  this.msgs = msgs;
+  this.state = this.buildState(msgs);
+  this.state = { ...this.state, capacity: this.capacityForRatio(0.9) };
+});
+
+Given('相邻两条用户消息分属完全无关的话题', function (this: CompressWorld) {
+  // 与上方 Outline 的 topic-shift 例同构：中文 vs 中文，bigram 无重叠
+  const msgs = new HistoryBuilder()
+    .system()
+    .user('讨论数据库索引优化方案')
+    .user('帮我写一首关于大海的诗')
+    .build();
+  this.msgs = msgs;
+  this.state = this.buildState(msgs);
+  this.state = { ...this.state, capacity: this.capacityForRatio(0.9) };
+});
+
+When('直接调用公共导出的 defaultShouldCompress', function (this: CompressWorld) {
+  const decision = defaultShouldCompress({
+    state: this.state!,
+    config: this.config,
+    turnsSinceLastCompress: this.turnsSinceLastCompress,
+    justCompressed: this.justCompressed,
+  });
+  this.decision = decision;
+  this.decisionLog = [...(this.decisionLog ?? []), decision];
+});
+
+Then('不得因 topic-shift 假阳性触发压缩', function (this: CompressWorld) {
+  const d = this.decision!;
+  assert.ok(
+    !(d.compress === true && d.boundaryType === 'topic-shift'),
+    `相似相邻消息被误报 topic-shift（空语料空间回归）：${JSON.stringify(d)}`,
+  );
 });

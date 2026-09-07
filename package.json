@@ -1,6 +1,6 @@
 {
   "name": "dsh-callback",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "渐进式上下文压缩库：契约先行的 Agent 上下文管理者，五钩子回调架构 + 编排器内置触发路径，可嵌入任意 Agent 运行时",
   "type": "module",
   "main": "./dist/index.js",
